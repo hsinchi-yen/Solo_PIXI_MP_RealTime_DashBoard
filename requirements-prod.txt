@@ -1,0 +1,7 @@
+# Production dependencies only — no test/dev tools
+# Note: plain uvicorn (no [standard]) avoids uvloop/httptools compilation
+# on embedded targets (Yocto, Alpine) where C headers may be absent.
+fastapi==0.111.*
+uvicorn==0.30.*
+watchdog==4.*
+tomli>=2.0; python_version < "3.11"

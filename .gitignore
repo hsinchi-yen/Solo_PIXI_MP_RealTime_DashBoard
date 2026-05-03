@@ -1,0 +1,9 @@
+rawlogs/
+Reference_app/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+.claude/
+.claude-plugin/

@@ -1,0 +1,22 @@
+MAC1: 001F7B6BD20E
+MAC2: 001F7B6BD20F
+Start: 2026/01/05 17:19:00
+
+1. ATC_CONNECT_TESTER
+	Status  0  None  (0 ~ 0)  <-- pass
+
+2. ATC_INSERT_DUT
+	Status  0  None  (0 ~ 0)  <-- pass
+
+3. WIFI_TX_VERIFY_CCK
+	TX_POWER_11B_1M  16.8  dBm  (18.0 ~ 14.0)  <-- pass
+	TX_POWER_11B_11M  16.5  dBm  (18.0 ~ 14.0)  <-- pass
+
+4. WIFI_RX_VERIFY_PER
+	PER  2.5  %  (8.0 ~ 0.0)  <-- pass
+
+*** P A S S ***
+
+End: 2026/01/05 17:20:14
+Test Time: 01:14.9
+Serial number: IQ112EA2387

@@ -1,0 +1,22 @@
+MAC1:	AABBCC001100
+MAC2:	AABBCC001101
+Start:	2026/01/06 09:05:00
+
+1. ATC_CONNECT_TESTER
+	Serial number: IQ112EA2387
+	Test time: 0.44sec
+
+2. ATC_INSERT_DUT
+	Technology: BT
+	Test time: 0.01sec
+
+3. ATC_INITIALIZE_DUT
+	Technology: BT
+	Test time: 0.30sec
+
+4. ATC_TESTER_OBTAIN_CONTROL
+	Test time: 0.00sec
+
+********************* S T O P *********************
+End:	2026/01/06 09:05:04
+Test Time:  00:04.9

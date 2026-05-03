@@ -1,0 +1,25 @@
+[paths]
+log_dir = "rawlogs"
+
+[server]
+host = "0.0.0.0"
+port = 8080
+max_sse_connections = 20
+
+[watcher]
+# Polling interval in seconds. PollingObserver is used for cross-platform
+# reliability (works on Windows, Linux, Docker bind-mounts, NFS).
+poll_interval = 2.0
+# Seconds to wait after a file is detected before parsing it.
+# Allows the test station to finish writing the file.
+parse_delay = 1.0
+# Keep only the latest seen paths to avoid unbounded memory growth.
+seen_cache_max = 10000
+# Startup scan parses files in batches so the event loop stays responsive.
+startup_scan_batch_size = 200
+
+[dashboard]
+recent_records_limit = 50
+uph_window_minutes = 60
+yield_warning_threshold = 90.0
+yield_critical_threshold = 80.0
