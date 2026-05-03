@@ -11,9 +11,9 @@ const esc = s => String(s ?? '')
 // ── Constants ────────────────────────────────────────────────────────────────
 const YIELD_WARN = 90;
 const YIELD_CRIT = 80;
-const MAX_ROWS = 50;
-const TREND_WINDOW_MS = 5 * 60 * 1000;   // 5-minute comparison window
-const TREND_THRESHOLD = 0.5;              // % change considered significant
+const MAX_ROWS = 120;
+const TREND_WINDOW_MS = 5 * 60 * 1000;
+const TREND_THRESHOLD = 0.5;
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -33,17 +33,13 @@ const kpiCompTrend  = $('kpi-completion-trend');
 const kpiRetest     = $('kpi-retest');
 const statUph       = $('stat-uph');
 const statPpm       = $('stat-ppm');
-const stopPanel     = $('stop-panel');
-const stopList      = $('stop-list');
 const recordsTbody  = $('records-tbody');
-const failureChart  = $('failure-chart');
 const hourlyChart   = $('hourly-chart');
 const distChart     = $('dist-chart');
 const logdirInput   = $('logdir-input');
 const logdirBrowse  = $('logdir-browse');
 const inputWo       = $('input-wo');
 const inputTarget   = $('input-target');
-const woDisplay     = $('wo-display');
 const browseModal   = $('browse-modal');
 const browseCurrent = $('browse-current-path');
 const browseList    = $('browse-list');
@@ -51,21 +47,32 @@ const browseSelect  = $('browse-select');
 const browseCancel  = $('browse-cancel');
 const browseClose   = $('browse-close');
 
-// ── Clock ────────────────────────────────────────────────────────────────────
+// ── Clock + Date ─────────────────────────────────────────────────────────────
+const dateBadge = $('date-badge');
 function tickClock() {
-  clock.textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const now = new Date();
+  clock.textContent = now.toLocaleTimeString('en-GB', { hour12: false });
+  if (dateBadge) {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    dateBadge.textContent = `${y}-${m}-${d}`;
+  }
 }
 setInterval(tickClock, 1000);
 tickClock();
 
-// ── Work Order display ───────────────────────────────────────────────────────
-inputWo.addEventListener('input', () => {
-  woDisplay.textContent = inputWo.value ? `WO: ${inputWo.value}` : '';
-  _saveSettings();
-});
-inputTarget.addEventListener('input', _saveSettings);
+// ── Input lock / unlock (after Save / before Clear) ──────────────────────────
+function _lockInputs() {
+  inputWo.disabled = true;
+  inputTarget.disabled = true;
+}
+function _unlockInputs() {
+  inputWo.disabled = false;
+  inputTarget.disabled = false;
+}
 
-// ── Settings persistence (localStorage) ─────────────────────────────────────
+// ── Settings persistence (localStorage) ──────────────────────────────────────
 const _SETTINGS_KEY = 'pixi_dash_settings';
 
 function _saveSettings() {
@@ -79,6 +86,7 @@ function _saveSettings() {
 
 function _saveSettingsWithFeedback() {
   _saveSettings();
+  _lockInputs();
   _btnFeedback($('btn-save-settings'), '✓ Saved!');
   _btnFeedback($('btn-save-logdir'),   '✓');
 }
@@ -87,7 +95,7 @@ function _clearSettings() {
   localStorage.removeItem(_SETTINGS_KEY);
   inputWo.value = '';
   inputTarget.value = '100';
-  woDisplay.textContent = '';
+  _unlockInputs();
   updateCompletion();
   _btnFeedback($('btn-clear-settings'), '✓ Cleared!');
 }
@@ -99,9 +107,10 @@ function _restoreSettings() {
     // Migrate from old per-key storage if new key is missing
     if (!s.wo  && localStorage.getItem('wo_value')  !== null) s.wo  = localStorage.getItem('wo_value');
     if (!s.qty && localStorage.getItem('qty_value') !== null) s.qty = localStorage.getItem('qty_value');
-    if (s.wo)      { inputWo.value = s.wo; woDisplay.textContent = `WO: ${s.wo}`; }
+    if (s.wo)      { inputWo.value = s.wo; }
     if (s.qty)     { inputTarget.value = s.qty; }
     if (s.log_dir) { logdirInput.value = s.log_dir; }
+    if (s.wo || s.qty) { _lockInputs(); }
   } catch (_) {}
 }
 
@@ -116,13 +125,12 @@ function _btnFeedback(btn, msg) {
 $('btn-save-settings').addEventListener('click', _saveSettingsWithFeedback);
 $('btn-clear-settings').addEventListener('click', _clearSettings);
 
-// Footer LOG DIR save/clear buttons (added by user in footer bar)
 const _btnSaveLogdir  = $('btn-save-logdir');
 const _btnClearLogdir = $('btn-clear-logdir');
 if (_btnSaveLogdir)  _btnSaveLogdir.addEventListener('click',  _saveSettingsWithFeedback);
 if (_btnClearLogdir) _btnClearLogdir.addEventListener('click', _clearSettings);
 
-// ── Completion rate ──────────────────────────────────────────────────────────
+// ── Completion rate ───────────────────────────────────────────────────────────
 let _lastTotal = 0;
 let _lastCompletionPct = 0;
 function updateCompletion() {
@@ -142,12 +150,11 @@ function updateCompletion() {
 inputTarget.addEventListener('input', updateCompletion);
 
 // ── KPI trend tracking ────────────────────────────────────────────────────────
-const _trendHistory = [];   // [{ts, yield, completion}]
+const _trendHistory = [];
 
 function _recordTrend(yieldVal, completionVal) {
   const now = Date.now();
   _trendHistory.push({ ts: now, yield: yieldVal, completion: completionVal });
-  // Keep only last 12 minutes (2× window) to bound memory
   const cutoff = now - TREND_WINDOW_MS * 2.4;
   while (_trendHistory.length > 1 && _trendHistory[0].ts < cutoff) _trendHistory.shift();
 }
@@ -184,12 +191,10 @@ function updateKPI(stats) {
                       'color-fail blink'
   );
 
-  // Record trend snapshot then render arrows
   updateCompletion();
   _recordTrend(y, _lastCompletionPct);
   if (kpiYieldTrend) kpiYieldTrend.innerHTML = _trendArrow('yield', y);
 
-  // retest rate
   if (kpiRetest) {
     const rr = stats.retest_rate;
     const rc = stats.retest_count || 0;
@@ -201,16 +206,22 @@ function updateKPI(stats) {
   }
 }
 
-// ── Hourly chart ──────────────────────────────────────────────────────────────
+// ── Hourly chart (07:00–19:00 working window) ─────────────────────────────────
+const HOURLY_START = 7;
+const HOURLY_END   = 19;
+
 function renderHourlyChart(hourly) {
   if (!hourly || Object.keys(hourly).length === 0) {
     hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
     return;
   }
-  const values = Object.values(hourly).map(v => Number(v) || 0);
+  const values = [];
+  for (let h = HOURLY_START; h <= HOURLY_END; h++) {
+    values.push(Number(hourly[String(h)] ?? hourly[h] ?? 0) || 0);
+  }
   const max = Math.max(1, ...values);
   hourlyChart.innerHTML = '';
-  for (let h = 0; h < 24; h++) {
+  for (let h = HOURLY_START; h <= HOURLY_END; h++) {
     const count = Number(hourly[String(h)] ?? hourly[h] ?? 0) || 0;
     const pct = count > 0 ? Math.max((count / max) * 100, 4) : 0;
     const wrap = document.createElement('div');
@@ -271,31 +282,6 @@ function renderDistribution(dist) {
   });
 }
 
-// ── Failure chart ─────────────────────────────────────────────────────────────
-function renderFailureChart(stats) {
-  const entries = Object.entries(stats);
-  if (entries.length === 0) {
-    failureChart.innerHTML = '<div class="chart-empty">No failures recorded</div>';
-    return;
-  }
-  const max = Math.max(...entries.map(([, v]) => v));
-  failureChart.innerHTML = entries
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => {
-      const pct = max > 0 ? Math.max((count / max) * 100, 3) : 3;
-      const safeName = esc(name);
-      const safeCount = esc(String(count));
-      return `
-        <div class="chart-row">
-          <div class="chart-name" title="${safeName}">${safeName}</div>
-          <div class="chart-bar-wrap">
-            <div class="chart-bar" style="width:${pct}%"></div>
-            <span class="chart-count">${safeCount}</span>
-          </div>
-        </div>`;
-    }).join('');
-}
-
 // ── Record row ────────────────────────────────────────────────────────────────
 const RESULT_ICON = { PASS: '✓', FAIL: '✗', STOP: '⊘' };
 
@@ -333,31 +319,6 @@ function prependRecord(rec) {
   }
 }
 
-// ── STOP alert ────────────────────────────────────────────────────────────────
-function makeStopRow(time, mac1, fixtureId) {
-  const div = document.createElement('div');
-  div.className = 'stop-row';
-  div.innerHTML = `
-    <span>${esc(time)}</span>
-    <span>MAC: ${esc(mac1)}</span>
-    <span>${esc(fixtureId)}</span>
-    <button class="stop-ack" title="Acknowledge and close">✓ ACK</button>`;
-  div.querySelector('.stop-ack').addEventListener('click', () => {
-    div.classList.add('stop-acked');
-    setTimeout(() => {
-      div.remove();
-      if (!stopList.querySelector('.stop-row')) stopPanel.classList.add('hidden');
-    }, 350);
-  });
-  return div;
-}
-
-function showStopAlert(alert) {
-  stopPanel.classList.remove('hidden');
-  const time = alert.time || (alert.datetime || '').slice(11, 19);
-  stopList.prepend(makeStopRow(time, alert.mac1 || '', alert.fixture_id || ''));
-}
-
 // ── Progress ──────────────────────────────────────────────────────────────────
 function showProgress(current, total) {
   overlay.classList.remove('hidden');
@@ -377,24 +338,11 @@ function setConnected(yes) {
 // ── Full snapshot render ──────────────────────────────────────────────────────
 function renderSnapshot(snap) {
   updateKPI(snap.stats);
-  renderFailureChart(snap.failure_stats || {});
   renderHourlyChart(snap.hourly_counts || {});
   renderDistribution(snap.result_distribution || { pass_pct: 0, fail_pct: 0, stop_pct: 0 });
 
   recordsTbody.innerHTML = '';
   (snap.recent_records || []).forEach(rec => recordsTbody.appendChild(buildRow(rec)));
-
-  stopList.innerHTML = '';
-  const stops = snap.stop_alerts || [];
-  if (stops.length > 0) {
-    stopPanel.classList.remove('hidden');
-    stops.forEach(s => {
-      const time = (s.datetime || '').slice(11, 19);
-      stopList.appendChild(makeStopRow(time, s.mac1 || '', s.fixture_id || ''));
-    });
-  } else {
-    stopPanel.classList.add('hidden');
-  }
 
   if (snap.log_dir !== undefined) logdirInput.value = snap.log_dir;
 }
@@ -404,9 +352,6 @@ function clearDashboard() {
   if (statUph) statUph.textContent = '—';
   if (statPpm) statPpm.textContent = '—';
   recordsTbody.innerHTML = '';
-  stopList.innerHTML = '';
-  stopPanel.classList.add('hidden');
-  failureChart.innerHTML = '<div class="chart-empty">No failures recorded</div>';
   hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
   distChart.innerHTML = '<div class="dist-empty">No data</div>';
 }
@@ -493,7 +438,7 @@ async function applyLogDir(dir) {
     });
     const data = await res.json();
     if (!res.ok) alert('Error: ' + (data.error || res.status));
-    else _saveSettings();   // auto-save log_dir after successful apply
+    else _saveSettings();
   } catch (e) {
     alert('Request failed: ' + e.message);
   } finally {
@@ -505,9 +450,35 @@ logdirInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') applyLogDir(logdirInput.value.trim());
 });
 
+// ── Log Sweep ─────────────────────────────────────────────────────────────────
+const logSweepBtn = $('btn-log-sweep');
+if (logSweepBtn) {
+  logSweepBtn.addEventListener('click', async () => {
+    const dir = logdirInput.value.trim();
+    const msg = dir
+      ? `Delete ALL .txt files in:\n${dir}\n\nThis cannot be undone. Continue?`
+      : 'Delete ALL .txt files in the current log directory?\n\nThis cannot be undone. Continue?';
+    if (!confirm(msg)) return;
+    logSweepBtn.disabled = true;
+    try {
+      const res = await fetch('/api/log-sweep', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Sweep complete: ${data.deleted} file(s) deleted.`);
+      } else {
+        alert('Sweep failed: ' + (data.error || res.status));
+      }
+    } catch (e) {
+      alert('Request failed: ' + e.message);
+    } finally {
+      logSweepBtn.disabled = false;
+    }
+  });
+}
+
 // ── Main init ─────────────────────────────────────────────────────────────────
 async function init() {
-  _restoreSettings();   // restore WO / QTY / LOG DIR from localStorage before anything else
+  _restoreSettings();
 
   try {
     const cfg = await fetch('/api/config').then(r => r.json());
@@ -544,12 +515,11 @@ async function init() {
   es.addEventListener('stats_update', e => {
     const data = JSON.parse(e.data);
     updateKPI(data);
-    if (data.hourly_counts) renderHourlyChart(data.hourly_counts);
+    if (data.hourly_counts)      renderHourlyChart(data.hourly_counts);
     if (data.result_distribution) renderDistribution(data.result_distribution);
   });
 
   es.addEventListener('new_record', e => prependRecord(JSON.parse(e.data)));
-  es.addEventListener('stop_alert', e => showStopAlert(JSON.parse(e.data)));
 
   es.addEventListener('init_progress', e => {
     const { current, total } = JSON.parse(e.data);
@@ -566,24 +536,19 @@ async function init() {
     clearDashboard();
     showProgress(0, 0);
   });
-
-  es.addEventListener('failure_update', e => renderFailureChart(JSON.parse(e.data)));
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 init().catch(console.error);
 
 // ── Silent KPI polling (fallback for missed SSE events) ──────────────────────
-// Every 30 s fetch a fresh snapshot and update KPI + charts without touching
-// the WO / QTY inputs or reloading the page.
 async function _silentRefresh() {
   try {
     const s = await fetch('/api/snapshot').then(r => r.json());
     if (!s.ready) return;
     updateKPI(s.stats);
-    if (s.hourly_counts)      renderHourlyChart(s.hourly_counts);
+    if (s.hourly_counts)       renderHourlyChart(s.hourly_counts);
     if (s.result_distribution) renderDistribution(s.result_distribution);
-    if (s.failure_stats)       renderFailureChart(s.failure_stats);
   } catch (_) {}
 }
 setInterval(_silentRefresh, 30000);
@@ -603,8 +568,4 @@ function toggleTheme() {
   localStorage.setItem('theme', light ? 'light' : 'dark');
 }
 if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-// Restore saved preference
 applyTheme(localStorage.getItem('theme') === 'light');
-
-
-

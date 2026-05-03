@@ -19,7 +19,7 @@ seen_cache_max = 10000
 startup_scan_batch_size = 200
 
 [dashboard]
-recent_records_limit = 50
+recent_records_limit = 120
 uph_window_minutes = 60
 yield_warning_threshold = 90.0
 yield_critical_threshold = 80.0

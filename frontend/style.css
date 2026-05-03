@@ -145,6 +145,13 @@ header {
 }
 .hf-input-qty { width: 90px; }
 .hf-input:focus { outline: none; border-color: var(--info); }
+.hf-input:disabled {
+  background: #111118;
+  color: var(--text-dim);
+  border-color: var(--border);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
 .hf-sep {
   width: 1px;
   height: 28px;
@@ -178,7 +185,7 @@ header {
 .hf-btn-clear:hover    { border-color: var(--fail); color: var(--fail); }
 .hf-btn.btn-feedback   { color: var(--pass); border-color: var(--pass); }
 
-/* Block 3: Clock */
+/* Block 3: Clock + Date */
 .header-clock {
   display: flex;
   align-items: center;
@@ -186,12 +193,26 @@ header {
   padding: 0 24px;
   flex-shrink: 0;
 }
+.header-clock-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
 #clock {
   font-size: 26px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: .06em;
   color: var(--text);
+  line-height: 1;
+}
+.date-badge {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .06em;
+  color: var(--text-dim);
   line-height: 1;
 }
 
@@ -255,6 +276,20 @@ header {
   flex-shrink: 0;
 }
 .logdir-bar button:hover { background: #2a2a48; border-color: var(--info); }
+#logdir-browse { padding: 3px 8px; font-size: 16px; }
+.logdir-sweep-btn {
+  background: #1e1e30;
+  border: 1px solid var(--stop);
+  color: var(--stop);
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.logdir-sweep-btn:hover { background: rgba(255,149,0,.15); }
+.logdir-sweep-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .logdir-bar-sep {
   flex: 1;
 }
@@ -383,7 +418,7 @@ header {
 /* ── MAIN GRID ───────────────────────────────────────────────────── */
 .main-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 3fr 2fr;
   gap: 12px;
   padding: 12px 20px;
   flex: 1;
@@ -756,6 +791,7 @@ body.light-mode .app-title       { color: #111827; }
   .hf-input         { font-size: 14px; padding: 4px 10px; width: 148px; }
   .hf-input-qty     { width: 72px; }
   #clock            { font-size: 20px; }
+  .date-badge       { font-size: 20px; }
   .header-clock     { padding: 0 18px; }
   .header-brand     { padding: 0 18px; }
   .header-mission   { padding: 0 18px; }
@@ -820,6 +856,7 @@ body.light-mode .app-title       { color: #111827; }
   .hf-input         { font-size: 15px; padding: 5px 11px; width: 160px; }
   .hf-input-qty     { width: 80px; }
   #clock            { font-size: 22px; }
+  .date-badge       { font-size: 22px; }
 
   /* KPI bar */
   .kpi-bar          { padding: 7px 16px; gap: 9px; }
@@ -879,6 +916,7 @@ body.light-mode .app-title       { color: #111827; }
   .hf-input         { font-size: 18px; width: 200px; }
   .hf-input-qty     { width: 100px; }
   #clock            { font-size: 30px; }
+  .date-badge       { font-size: 30px; }
 
   .logdir-bar       { height: 38px; }
 }

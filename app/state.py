@@ -87,22 +87,16 @@ class DashboardState:
     def uph(self) -> int:
         if not self._uph_times:
             return 0
-        # Use the latest record time or wall clock, whichever is more recent.
-        # This makes historical backfill show accurate historical rate, and live
-        # events show the current production rate without startup-replay distortion.
-        ref = max(self._uph_times[-1], datetime.now())
-        cutoff = ref - timedelta(minutes=self._cfg.uph_window_minutes)
+        cutoff = datetime.now() - timedelta(hours=1)
         return sum(1 for t in self._uph_times if t >= cutoff)
 
     @property
     def minute_pass_rate(self) -> float:
-        window = 30
         if not self._minute_pass_times:
             return 0.0
-        ref = max(self._minute_pass_times[-1], datetime.now())
-        cutoff = ref - timedelta(minutes=window)
+        cutoff = datetime.now() - timedelta(hours=1)
         count = sum(1 for t in self._minute_pass_times if t >= cutoff)
-        return round(count / window, 2)
+        return round(count / 60, 2)
 
     @property
     def result_distribution(self) -> dict:

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
 
@@ -44,7 +44,7 @@
 
   <div class="header-sep"></div>
 
-  <!-- Block 2: Mission setup -->
+  <!-- Block 2: Mission setup — Save/Clear next to QTY, no wo-display -->
   <div class="header-mission">
     <div class="header-fields-row">
       <span class="hf-label">WO</span>
@@ -52,7 +52,6 @@
       <span class="hf-sep"></span>
       <span class="hf-label">QTY</span>
       <input type="number" id="input-target" class="hf-input hf-input-qty" placeholder="100" min="1" value="100">
-      <div id="wo-display" class="wo-display"></div>
       <span class="hf-sep"></span>
       <button id="btn-save-settings" class="hf-btn hf-btn-save" title="儲存 WO / QTY / LOG DIR">💾 Save</button>
       <button id="btn-clear-settings" class="hf-btn hf-btn-clear" title="清除已儲存的 WO / QTY / LOG DIR">🗑 Clear</button>
@@ -61,9 +60,12 @@
 
   <div class="header-sep"></div>
 
-  <!-- Block 3: Clock -->
+  <!-- Block 3: Date (top) + Clock (bottom), same font size -->
   <div class="header-clock">
-    <span id="clock">--:--:--</span>
+    <div class="header-clock-inner">
+      <span id="date-badge" class="date-badge">----/--/--</span>
+      <span id="clock">--:--:--</span>
+    </div>
   </div>
 </header>
 
@@ -99,13 +101,7 @@
   </div>
 </section>
 
-<!-- STOP alert panel -->
-<section id="stop-panel" class="stop-panel hidden">
-  <div class="stop-panel-title">⚠ STOP EVENTS</div>
-  <div id="stop-list" class="stop-list"></div>
-</section>
-
-<!-- Main grid: left stats | right records+failures -->
+<!-- Main grid: left stats (60%) | right records (40%) -->
 <section class="main-grid">
 
   <!-- LEFT: Stats panel -->
@@ -119,38 +115,30 @@
       <div class="stat-divider"></div>
       <div class="stat-item">
         <div class="stat-value" id="stat-ppm">—</div>
-        <div class="stat-label">PASS/MIN (30min)</div>
+        <div class="stat-label">PASS/MIN (60min)</div>
       </div>
     </div>
 
     <!-- ① Hourly completion chart -->
     <div class="stats-section stats-section-hourly">
-      <div class="stats-section-title">① HOURLY COMPLETION</div>
+      <div class="stats-section-title">① HOURLY COMPLETION (07–19)</div>
       <div id="hourly-chart" class="hourly-chart"></div>
     </div>
 
     <!-- ② Result distribution -->
-    <div class="stats-section">
+    <div class="stats-section stats-section-flex">
       <div class="stats-section-title">② RESULT DISTRIBUTION %</div>
       <div id="dist-chart" class="dist-chart">
         <div class="dist-empty">No data</div>
       </div>
     </div>
-
-    <!-- ③ Failure analysis -->
-    <div class="stats-section stats-section-flex stats-section-failure">
-      <div class="stats-section-title">③ FAILURE ANALYSIS</div>
-      <div id="failure-chart" class="failure-chart">
-        <div class="chart-empty">No failures recorded</div>
-      </div>
-    </div>
   </div>
 
-  <!-- RIGHT: Records panel -->
+  <!-- RIGHT: Records panel (40%) -->
   <div class="panel records-panel">
     <div class="panel-title">
       <span>RECENT TESTS</span>
-      <span class="panel-title-meta">LATEST 50</span>
+      <span class="panel-title-meta">LATEST 120</span>
     </div>
     <div class="table-scroll">
       <table class="records-table">
@@ -183,15 +171,16 @@
 <footer class="logdir-bar">
   <span class="logdir-bar-label">📂 LOG DIR</span>
   <input type="text" id="logdir-input" placeholder="C:\path\to\rawlogs" title="Log directory path">
-  <button id="logdir-browse">Browse</button>
+  <button id="logdir-browse" title="Browse directories">📁</button>
   <button id="btn-save-logdir" class="hf-btn hf-btn-save" title="儲存 LOG DIR">💾</button>
   <button id="btn-clear-logdir" class="hf-btn hf-btn-clear" title="清除已儲存的 LOG DIR">✕</button>
+  <button id="btn-log-sweep" class="logdir-sweep-btn" title="清除此目錄內所有 .txt 檔案">🧹 Sweep</button>
   <div class="logdir-bar-sep"></div>
   <div id="conn-dot" class="conn-dot disconnected" title="SSE connection status"></div>
   <span id="conn-label" class="conn-label">DISCONNECTED</span>
   <button id="theme-btn" class="theme-btn" title="Toggle Daylight / Dark mode">☀ DAY</button>
 </footer>
 
-<script src="/static/dashboard.js?v=4"></script>
+<script src="/static/dashboard.js?v=6"></script>
 </body>
 </html>

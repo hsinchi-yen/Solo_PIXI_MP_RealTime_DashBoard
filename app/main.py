@@ -244,6 +244,25 @@ async def set_log_dir(body: dict):
         return JSONResponse({"ok": True, "log_dir": str(p)})
 
 
+@app.post("/api/log-sweep")
+async def log_sweep():
+    log_dir = config.paths.log_dir.resolve()
+    if not log_dir.is_dir():
+        return JSONResponse({"error": "directory not found"}, status_code=404)
+    count = 0
+    for f in log_dir.glob("*.txt"):
+        try:
+            f.unlink()
+            count += 1
+        except OSError as e:
+            logger.warning("sweep: could not delete %s: %s", f, e)
+    state.reset()
+    state.ready = True
+    await sse_manager.broadcast("reset", {"log_dir": str(log_dir)})
+    logger.info("log sweep: deleted %d files from '%s'", count, log_dir)
+    return JSONResponse({"ok": True, "deleted": count})
+
+
 @app.get("/api/config")
 async def get_config():
     return JSONResponse({"log_dir": str(config.paths.log_dir)})
