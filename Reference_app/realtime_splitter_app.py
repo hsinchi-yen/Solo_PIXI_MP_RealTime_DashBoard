@@ -863,7 +863,7 @@ class RealtimeSplitterApp(QMainWindow):
     def _initUI(self):
         self.setWindowTitle('Log Splitter — Live')
         self.setMinimumSize(480, 297)
-        self.setMaximumSize(960, 594)
+        self.setMaximumSize(960, 800)
         self.resize(720, 418)
         self.setStyleSheet(STYLESHEET)
         if os.path.exists(APP_ICON_PATH):
@@ -1320,21 +1320,36 @@ class RealtimeSplitterApp(QMainWindow):
     # ── Collapse / Expand ────────────────────────────────────
 
     def _collapse_ui(self):
-        self._config_frame.setVisible(False)
-        self._status_frame.setVisible(False)
-        self._log_frame.setVisible(False)
-        self._upload_log_frame.setVisible(False)
+        self._pre_collapse_height = self.height()
+        for f in (self._config_frame, self._status_frame,
+                  self._log_frame, self._upload_log_frame):
+            f.hide()
         self.btn_collapse.setVisible(False)
         self.btn_expand.setVisible(True)
-        self.resize(self.width(), self.minimumSizeHint().height())
+        # Unlock min/max so the window can shrink, then lock after layout recalc
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
+        QTimer.singleShot(10, self._apply_collapse_height)
+
+    def _apply_collapse_height(self):
+        h = self.sizeHint().height()
+        self.setMinimumHeight(h)
+        self.setMaximumHeight(h)
+        self.resize(self.width(), h)
 
     def _expand_ui(self):
-        self._config_frame.setVisible(True)
-        self._status_frame.setVisible(True)
-        self._log_frame.setVisible(True)
-        self._upload_log_frame.setVisible(True)
+        # Unlock constraints before showing widgets
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
+        for f in (self._config_frame, self._status_frame,
+                  self._log_frame, self._upload_log_frame):
+            f.show()
         self.btn_expand.setVisible(False)
         self.btn_collapse.setVisible(True)
+        # Restore original min/max and pre-collapse height
+        self.setMinimumHeight(297)
+        self.setMaximumHeight(800)
+        self.resize(self.width(), getattr(self, '_pre_collapse_height', 418))
 
     # ── Station ID header display ─────────────────────────────
 
