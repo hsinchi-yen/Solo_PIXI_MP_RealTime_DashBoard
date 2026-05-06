@@ -80,6 +80,7 @@ docker build -t pixi-dashboard .
 docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
+  -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   --name pixi-dash \
@@ -87,6 +88,7 @@ docker run -d \
 ```
 
 > **注意：兩個 `-v` 都必須掛載。**
+> - 另外建議掛載 `/app/config`，讓 `mission.json`（WO/QTY/LOG DIR）在重建容器後可保留。
 > - 第一個：將 rawlogs 目錄映射到容器內的 `/app/rawlogs`（App 預設 log 路徑）。
 > - 第二個：將整個 NVMe 根目錄映射到容器內，讓 WO 工單下拉掃描 `/run/media/nvme0n1p1` 時能找到子目錄（如 `5101-260100001`）。
 
@@ -120,6 +122,7 @@ docker build -t pixi-dashboard .
 docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
+  -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   --name pixi-dash \
@@ -135,6 +138,7 @@ docker build -t pixi-dashboard .
 docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
+  -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   --name pixi-dash \
@@ -174,6 +178,7 @@ curl -s 'http://localhost:8080/api/access'
 | `address already in use` | Port 8080 已被佔用 | `docker stop pixi-dash` 或改用 `-p 8081:8080` |
 | 畫面顯示「0 筆資料」 | rawlogs 路徑設定錯誤 | 在 UI 右上角點 **Browse** 選取正確目錄 |
 | LOG DIR Browse 看不到 `/run/media/nvme0n1p1` | 舊版後端白名單或容器未重建 | 重新 build/redeploy 後執行 `curl -s 'http://localhost:8080/api/browse-dir?path=/run/media/nvme0n1p1'`，確認 `current` 回傳該路徑 |
+| WO / QTY 重開後消失 | 未掛載 `/app/config`，`mission.json` 不持久 | 啟動容器時加入 `-v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw` |
 | WO 下拉是空的 | NVMe 未掛載進容器 | 確認 `-v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw` 存在；執行 `curl localhost:8080/api/work-orders?refresh=1` 驗證 |
 | SSE 連線燈號一直紅色 | 伺服器未啟動或防火牆阻擋 | 確認容器正常運行，檢查防火牆設定 |
 | 遠端連入控制項反灰 | 安全機制：修改權限僅限 localhost | 在設備本機瀏覽器開啟 `http://localhost:8080` 操作 |

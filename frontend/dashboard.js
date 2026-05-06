@@ -625,7 +625,8 @@ async function browseNavigate(path) {
 function openBrowseModal() {
   if (!CAN_MODIFY) return;
   browseModal.classList.remove('hidden');
-  browseNavigate(logdirInput.value.trim() || '');
+  // Start from backend default root so users can switch between allowed roots.
+  browseNavigate('');
 }
 function closeBrowseModal() { browseModal.classList.add('hidden'); }
 
