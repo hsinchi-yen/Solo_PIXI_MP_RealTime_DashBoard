@@ -19,6 +19,7 @@ def _rec(mac1: str, result: str, dt: str = "2026-04-17T09:00:00",
          failed_items=None) -> ParsedLog:
     return ParsedLog(
         filename=f"f_{mac1}_{result}.txt",
+    station_id="",
         fixture_id="5101-001",
         datetime=dt,
         mac1=mac1,

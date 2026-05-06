@@ -116,3 +116,24 @@ def test_empty_file_returns_record_from_filename(tmp_path):
     assert r["duration"] == ""
     assert r["failed_items"] == []
 
+
+def test_wo_filename_maps_prefix_to_station_id(tmp_path):
+    name = "5101-260129012_20260417_090000_AABBCC001122_AABBCC001123_PASS.txt"
+    f = tmp_path / name
+    f.write_text("", encoding="utf-8")
+    r = parse(str(f))
+    assert r is not None
+    assert r["station_id"] == "5101-260129012"
+    assert r["result"] == "PASS"
+
+
+@pytest.mark.parametrize("result", ["PASS", "FAIL", "STOP"])
+def test_wo_filename_supports_all_results(tmp_path, result):
+    name = f"5101-260129012_20260417_090000_AABBCC001122_AABBCC001123_{result}.txt"
+    f = tmp_path / name
+    f.write_text("", encoding="utf-8")
+    r = parse(str(f))
+    assert r is not None
+    assert r["station_id"] == "5101-260129012"
+    assert r["result"] == result
+

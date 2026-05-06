@@ -12,6 +12,12 @@ FILENAME_RE = re.compile(
     r"^(STA\d{2})_(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
 )
 
+# WO format: WO_YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
+# WO token is mapped to station_id for KPI/record display grouping.
+FILENAME_RE_WO = re.compile(
+    r"^([A-Za-z0-9-]+)_(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
+)
+
 # Legacy format (no station ID): YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
 FILENAME_RE_LEGACY = re.compile(
     r"^(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
@@ -38,7 +44,7 @@ class FailedItem(TypedDict):
 
 class ParsedLog(TypedDict):
     filename: str
-    station_id: str    # e.g. "STA10", "STA20", empty string for legacy files
+    station_id: str    # e.g. "STA10", WO token, or empty string for legacy files
     fixture_id: str
     datetime: str      # ISO 8601, e.g. "2026-04-17T09:20:07"
     mac1: str
@@ -51,20 +57,25 @@ class ParsedLog(TypedDict):
 def parse(filepath: str) -> Optional[ParsedLog]:
     path = Path(filepath)
 
-    # Try new format first (with STATION ID)
+    # Parse priority: STA format -> WO format -> legacy format.
+    # This keeps legacy compatibility while allowing WO folders to be analyzed.
     m = FILENAME_RE.match(path.name)
     if m:
         station_id, date_str, time_str, mac1, mac2, result = m.groups()
-        fixture_id_from_name: Optional[str] = None   # will be read from content
     else:
-        # Fall back to legacy format (no station ID)
-        m = FILENAME_RE_LEGACY.match(path.name)
-        if not m:
-            logger.warning("filename does not match naming convention: %s", path.name)
-            return None
-        date_str, time_str, mac1, mac2, result = m.groups()
-        station_id = ""  # legacy files have no station ID
-        fixture_id_from_name = None
+        m = FILENAME_RE_WO.match(path.name)
+        if m:
+            station_id, date_str, time_str, mac1, mac2, result = m.groups()
+        else:
+            # Fall back to legacy format (no station ID)
+            m = FILENAME_RE_LEGACY.match(path.name)
+            if not m:
+                logger.warning("filename does not match naming convention: %s", path.name)
+                return None
+            date_str, time_str, mac1, mac2, result = m.groups()
+            station_id = ""  # legacy files have no station_id/WO prefix
+
+    fixture_id_from_name: Optional[str] = None   # extracted from content
 
     try:
         dt = datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
@@ -106,7 +117,7 @@ def _parse_content(
     state machine to track the current step name as measurement lines are found.
     """
     need_fail = result == "FAIL"
-    # Legacy-format files already have fixture_id from the filename
+    # fixture_id comes from file content (Serial number line)
     fixture_id: str = fixture_id_override if fixture_id_override is not None else ""
     need_serial = fixture_id_override is None
     duration = ""
