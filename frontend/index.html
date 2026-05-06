@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
 
@@ -48,11 +48,14 @@
   <div class="header-mission">
     <div class="header-fields-row">
       <span class="hf-label">WO</span>
-      <input type="text" id="input-wo" class="hf-input" placeholder="Work Order No.">
+      <select id="input-wo" class="hf-input hf-select" title="Work order list"></select>
+      <button id="btn-wo-refresh" class="hf-btn hf-btn-refresh" title="刷新工單目錄">↻</button>
+      <input type="text" id="input-wo-custom" class="hf-input hf-input-wo-custom hidden" placeholder="Custom Work Order">
       <span class="hf-sep"></span>
       <span class="hf-label">QTY</span>
       <input type="number" id="input-target" class="hf-input hf-input-qty" placeholder="100" min="1" value="100">
       <span class="hf-sep"></span>
+      <button id="btn-edit-settings" class="hf-btn hf-btn-edit hidden" title="解鎖編輯 WO / QTY">🔓 Edit</button>
       <button id="btn-save-settings" class="hf-btn hf-btn-save" title="儲存 WO / QTY / LOG DIR">💾 Save</button>
       <button id="btn-clear-settings" class="hf-btn hf-btn-clear" title="清除已儲存的 WO / QTY / LOG DIR">🗑 Clear</button>
     </div>
@@ -143,6 +146,7 @@
     <div class="table-scroll">
       <table class="records-table">
         <colgroup>
+          <col class="col-station">
           <col class="col-time">
           <col class="col-mac1">
           <col class="col-mac2">
@@ -152,6 +156,7 @@
         </colgroup>
         <thead>
           <tr>
+            <th>Station</th>
             <th>Time</th>
             <th>MAC1</th>
             <th>MAC2</th>
@@ -181,6 +186,6 @@
   <button id="theme-btn" class="theme-btn" title="Toggle Daylight / Dark mode">☀ DAY</button>
 </footer>
 
-<script src="/static/dashboard.js?v=6"></script>
+<script src="/static/dashboard.js?v=11"></script>
 </body>
 </html>

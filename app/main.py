@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ipaddress
 import logging
 import os
 import time
@@ -24,6 +25,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+MISSION_FILE = Path(__file__).parent.parent / "config" / "mission.json"
+WORK_ORDER_ROOT = Path("/run/media/nvme0n1p1")
+WORK_ORDER_MIN_LEN = int(os.getenv("WORK_ORDER_MIN_LEN", "13"))
+WORK_ORDER_MAX_LEN = int(os.getenv("WORK_ORDER_MAX_LEN", "16"))
+WORK_ORDER_CACHE_TTL_SEC = 60
+
+if WORK_ORDER_MIN_LEN > WORK_ORDER_MAX_LEN:
+    WORK_ORDER_MIN_LEN, WORK_ORDER_MAX_LEN = WORK_ORDER_MAX_LEN, WORK_ORDER_MIN_LEN
 
 
 def _norm_path(p: Path) -> str:
@@ -52,11 +61,55 @@ def _allowed_roots() -> list[Path]:
 def _is_allowed_path(p: Path) -> bool:
     return any(_is_within(p, root) for root in _allowed_roots())
 
+
+def _is_loopback_host(host: str) -> bool:
+    host = (host or "").strip()
+    if not host:
+        return False
+    if host == "localhost":
+        return True
+    if host.startswith("::ffff:"):
+        host = host.split("::ffff:", 1)[1]
+    host = host.split("%", 1)[0]
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _client_host(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    if xff:
+        return xff
+    x_real_ip = request.headers.get("x-real-ip", "").strip()
+    if x_real_ip:
+        return x_real_ip
+    return request.client.host if request.client else ""
+
+
+def _is_local_request(request: Request) -> bool:
+    host_header = request.headers.get("host", "").strip()
+    host_name = host_header.split(":", 1)[0] if host_header else ""
+    if _is_loopback_host(host_name):
+        return True
+    return _is_loopback_host(_client_host(request))
+
+
+def _require_localhost(request: Request) -> JSONResponse | None:
+    if _is_local_request(request):
+        return None
+    return JSONResponse(
+        {"error": "modification allowed only from localhost"},
+        status_code=403,
+    )
+
 config = load_config()
 state = DashboardState(config)
 sse_manager = SSEManager(max_connections=config.server.max_sse_connections)
 _observer = None
 _scan_task: asyncio.Task | None = None
+_work_order_cache: list[str] = []
+_work_order_cache_ts: float = 0.0
 
 
 def _stop_observer(observer, timeout: float = 3.0) -> None:
@@ -70,6 +123,46 @@ def _stop_observer(observer, timeout: float = 3.0) -> None:
             logger.warning("observer did not stop within %.1fs — abandoning", timeout)
     except Exception as exc:
         logger.warning("error stopping observer: %s", exc)
+
+
+def _extract_work_order_from_dirname(name: str) -> str | None:
+    text = (name or "").strip()
+    if not text:
+        return None
+
+    lb = text.find("[")
+    rb = text.find("]", lb + 1) if lb >= 0 else -1
+    if lb >= 0 and rb > lb:
+        text = text[lb + 1:rb].strip()
+
+    text_len = len(text)
+    if text_len < WORK_ORDER_MIN_LEN or text_len > WORK_ORDER_MAX_LEN:
+        return None
+    return text
+
+
+def _scan_work_orders() -> list[str]:
+    if not WORK_ORDER_ROOT.is_dir():
+        return []
+
+    names: set[str] = set()
+    for child in WORK_ORDER_ROOT.iterdir():
+        if not child.is_dir():
+            continue
+        wo = _extract_work_order_from_dirname(child.name)
+        if wo:
+            names.add(wo)
+    return sorted(names)
+
+
+def _get_work_orders(refresh: bool = False) -> list[str]:
+    global _work_order_cache, _work_order_cache_ts
+
+    now = time.time()
+    if refresh or (now - _work_order_cache_ts) > WORK_ORDER_CACHE_TTL_SEC:
+        _work_order_cache = _scan_work_orders()
+        _work_order_cache_ts = now
+    return list(_work_order_cache)
 
 
 async def _startup_scan(log_dir: str) -> None:
@@ -156,6 +249,33 @@ async def root():
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
+@app.get("/api/access")
+async def access(request: Request):
+    return JSONResponse(
+        {
+            "can_modify": _is_local_request(request),
+            "client_host": _client_host(request),
+        }
+    )
+
+
+@app.get("/api/work-orders")
+async def work_orders(request: Request, refresh: int = 0):
+    denied = _require_localhost(request)
+    if denied:
+        return denied
+    items = _get_work_orders(refresh=bool(refresh))
+    return JSONResponse(
+        {
+            "items": items,
+            "source_root": str(WORK_ORDER_ROOT),
+            "length_min": WORK_ORDER_MIN_LEN,
+            "length_max": WORK_ORDER_MAX_LEN,
+            "cached_at": int(_work_order_cache_ts),
+        }
+    )
+
+
 @app.get("/api/snapshot")
 async def snapshot():
     return JSONResponse(state.get_snapshot())
@@ -199,8 +319,12 @@ async def sse_stream(request: Request):
 
 
 @app.post("/api/config/log-dir")
-async def set_log_dir(body: dict):
+async def set_log_dir(request: Request, body: dict):
     global _observer, _scan_task
+
+    denied = _require_localhost(request)
+    if denied:
+        return denied
 
     raw_dir = body.get("log_dir")
     new_dir = raw_dir.strip() if isinstance(raw_dir, str) else ""
@@ -245,7 +369,11 @@ async def set_log_dir(body: dict):
 
 
 @app.post("/api/log-sweep")
-async def log_sweep():
+async def log_sweep(request: Request):
+    denied = _require_localhost(request)
+    if denied:
+        return denied
+
     log_dir = config.paths.log_dir.resolve()
     if not log_dir.is_dir():
         return JSONResponse({"error": "directory not found"}, status_code=404)
@@ -268,8 +396,68 @@ async def get_config():
     return JSONResponse({"log_dir": str(config.paths.log_dir)})
 
 
+@app.get("/api/mission")
+async def get_mission():
+    if not MISSION_FILE.exists():
+        return JSONResponse({})
+    try:
+        with MISSION_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return JSONResponse({})
+        return JSONResponse(data)
+    except Exception as e:
+        logger.warning("failed to read mission config: %s", e)
+        return JSONResponse({})
+
+
+@app.post("/api/mission")
+async def save_mission(request: Request, body: dict):
+    denied = _require_localhost(request)
+    if denied:
+        return denied
+
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid payload"}, status_code=400)
+
+    payload = {
+        "wo": str(body.get("wo", "")),
+        "qty": int(body.get("qty", 100) or 100),
+        "log_dir": str(body.get("log_dir", "")),
+    }
+    if payload["qty"] < 1:
+        payload["qty"] = 1
+
+    try:
+        MISSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with MISSION_FILE.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        logger.error("failed to save mission config: %s", e)
+        return JSONResponse({"error": "failed to save mission"}, status_code=500)
+
+
+@app.delete("/api/mission")
+async def clear_mission(request: Request):
+    denied = _require_localhost(request)
+    if denied:
+        return denied
+    try:
+        if MISSION_FILE.exists():
+            MISSION_FILE.unlink()
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        logger.error("failed to clear mission config: %s", e)
+        return JSONResponse({"error": "failed to clear mission"}, status_code=500)
+
+
 @app.get("/api/browse-dir")
-async def browse_dir(path: str = ""):
+async def browse_dir(request: Request, path: str = ""):
+    denied = _require_localhost(request)
+    if denied:
+        return denied
+
     if not path or not path.strip():
         p = config.paths.log_dir
     else:

@@ -39,6 +39,8 @@ const distChart     = $('dist-chart');
 const logdirInput   = $('logdir-input');
 const logdirBrowse  = $('logdir-browse');
 const inputWo       = $('input-wo');
+const inputWoCustom = $('input-wo-custom');
+const btnWoRefresh  = $('btn-wo-refresh');
 const inputTarget   = $('input-target');
 const browseModal   = $('browse-modal');
 const browseCurrent = $('browse-current-path');
@@ -46,6 +48,164 @@ const browseList    = $('browse-list');
 const browseSelect  = $('browse-select');
 const browseCancel  = $('browse-cancel');
 const browseClose   = $('browse-close');
+const btnSaveSettings = $('btn-save-settings');
+const btnClearSettings = $('btn-clear-settings');
+const btnSaveLogdir = $('btn-save-logdir');
+const btnClearLogdir = $('btn-clear-logdir');
+const logSweepBtn = $('btn-log-sweep');
+
+let CAN_MODIFY = false;
+const WO_CUSTOM_KEY = '__custom__';
+let WO_MIN_LEN = 13;
+let WO_MAX_LEN = 16;
+
+function _normalizeWoCandidate(raw) {
+  let text = String(raw ?? '').trim();
+  if (!text) return '';
+  const lb = text.indexOf('[');
+  const rb = text.indexOf(']');
+  if (lb >= 0 && rb > lb) {
+    text = text.slice(lb + 1, rb).trim();
+  }
+  return text;
+}
+
+function _woLengthOk(raw) {
+  const len = _normalizeWoCandidate(raw).length;
+  return len >= WO_MIN_LEN && len <= WO_MAX_LEN;
+}
+
+function _setWoCustomMode(enabled) {
+  if (!inputWoCustom) return;
+  inputWoCustom.classList.toggle('hidden', !enabled);
+  inputWoCustom.disabled = !enabled || !CAN_MODIFY;
+}
+
+function _getWoValue() {
+  if (!inputWo) return '';
+  if (inputWo.value === WO_CUSTOM_KEY) {
+    return String(inputWoCustom?.value ?? '').trim();
+  }
+  return String(inputWo.value ?? '').trim();
+}
+
+function _setWoValue(value) {
+  if (!inputWo) return;
+  const wo = String(value ?? '').trim();
+  const hasExactOption = Array.from(inputWo.options).some(opt => opt.value === wo);
+  if (wo && hasExactOption) {
+    inputWo.value = wo;
+    _setWoCustomMode(false);
+    return;
+  }
+  inputWo.value = WO_CUSTOM_KEY;
+  if (inputWoCustom) inputWoCustom.value = wo;
+  _setWoCustomMode(true);
+}
+
+function _renderWorkOrders(items) {
+  if (!inputWo) return;
+  const keepValue = _getWoValue();
+  const unique = [...new Set((items || []).filter(Boolean))];
+  inputWo.innerHTML = '';
+
+  unique.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item;
+    opt.textContent = item;
+    inputWo.appendChild(opt);
+  });
+
+  const custom = document.createElement('option');
+  custom.value = WO_CUSTOM_KEY;
+  custom.textContent = 'custom';
+  inputWo.appendChild(custom);
+
+  if (unique.length === 0) {
+    inputWo.value = WO_CUSTOM_KEY;
+    _setWoCustomMode(true);
+  }
+
+  _setWoValue(keepValue);
+}
+
+async function _loadWorkOrders(forceRefresh = false) {
+  if (!inputWo) return;
+  if (!CAN_MODIFY) {
+    _renderWorkOrders([]);
+    return;
+  }
+
+  try {
+    const suffix = forceRefresh ? '?refresh=1' : '';
+    const res = await fetch(`/api/work-orders${suffix}`);
+    if (!res.ok) throw new Error('failed to load work orders');
+    const data = await res.json();
+    if (Number.isInteger(data.length_min)) WO_MIN_LEN = data.length_min;
+    if (Number.isInteger(data.length_max)) WO_MAX_LEN = data.length_max;
+    if (WO_MIN_LEN > WO_MAX_LEN) {
+      const t = WO_MIN_LEN;
+      WO_MIN_LEN = WO_MAX_LEN;
+      WO_MAX_LEN = t;
+    }
+    const items = (data.items || []).filter(_woLengthOk);
+    _renderWorkOrders(items);
+  } catch (e) {
+    console.error('Failed to load work orders:', e);
+    _renderWorkOrders([]);
+  }
+}
+
+function _likelyLocalHost() {
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+}
+
+function _setModifyControlsEnabled(enabled) {
+  const controls = [
+    inputWo,
+    inputWoCustom,
+    btnWoRefresh,
+    inputTarget,
+    btnEditSettings,
+    btnSaveSettings,
+    btnClearSettings,
+    logdirInput,
+    logdirBrowse,
+    browseSelect,
+    browseCancel,
+    browseClose,
+    btnSaveLogdir,
+    btnClearLogdir,
+    logSweepBtn,
+  ];
+
+  controls.forEach(el => {
+    if (!el) return;
+    el.disabled = !enabled;
+    if (!enabled) {
+      el.title = 'Only editable from localhost:8080';
+    }
+  });
+
+  if (!enabled) {
+    closeBrowseModal();
+    if (browseModal) browseModal.classList.add('hidden');
+    _setWoCustomMode(inputWo?.value === WO_CUSTOM_KEY);
+  }
+}
+
+async function _loadAccessPolicy() {
+  CAN_MODIFY = _likelyLocalHost();
+  try {
+    const res = await fetch('/api/access');
+    if (res.ok) {
+      const data = await res.json();
+      CAN_MODIFY = !!data.can_modify;
+    }
+  } catch (_) {}
+  _setModifyControlsEnabled(CAN_MODIFY);
+}
 
 // ── Clock + Date ─────────────────────────────────────────────────────────────
 const dateBadge = $('date-badge');
@@ -63,55 +223,93 @@ setInterval(tickClock, 1000);
 tickClock();
 
 // ── Input lock / unlock (after Save / before Clear) ──────────────────────────
+const btnEditSettings = $('btn-edit-settings');
+
 function _lockInputs() {
   inputWo.disabled = true;
+  if (inputWoCustom) inputWoCustom.disabled = true;
+  if (btnWoRefresh) btnWoRefresh.disabled = true;
   inputTarget.disabled = true;
+  if (btnEditSettings) btnEditSettings.classList.remove('hidden');
 }
+
 function _unlockInputs() {
   inputWo.disabled = false;
+  if (btnWoRefresh) btnWoRefresh.disabled = false;
+  _setWoCustomMode(inputWo?.value === WO_CUSTOM_KEY);
   inputTarget.disabled = false;
+  if (btnEditSettings) btnEditSettings.classList.add('hidden');
 }
 
-// ── Settings persistence (localStorage) ──────────────────────────────────────
-const _SETTINGS_KEY = 'pixi_dash_settings';
+function _editSettings() {
+  if (!CAN_MODIFY) return;
+  _unlockInputs();
+  _btnFeedback(btnEditSettings, '✓ 已解鎖');
+}
 
-function _saveSettings() {
+// ── Settings persistence (server-side JSON) ───────────────────────────────────
+async function _saveSettings() {
+  if (!CAN_MODIFY) return false;
   const settings = {
-    wo:      inputWo.value,
-    qty:     inputTarget.value,
+    wo:      _getWoValue(),
+    qty:     parseInt(inputTarget.value, 10) || 100,
     log_dir: logdirInput.value,
   };
-  localStorage.setItem(_SETTINGS_KEY, JSON.stringify(settings));
+  
+  try {
+    const response = await fetch('/api/mission', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    
+    if (!response.ok) throw new Error('Save failed');
+    return true;
+  } catch (e) {
+    console.error('Failed to save settings:', e);
+    return false;
+  }
 }
 
-function _saveSettingsWithFeedback() {
-  _saveSettings();
-  _lockInputs();
-  _btnFeedback($('btn-save-settings'), '✓ Saved!');
-  _btnFeedback($('btn-save-logdir'),   '✓');
+async function _saveSettingsWithFeedback() {
+  const success = await _saveSettings();
+  if (success) {
+    _lockInputs();
+    _btnFeedback($('btn-save-settings'), '✓ Saved!');
+    _btnFeedback($('btn-save-logdir'),   '✓');
+  } else {
+    _btnFeedback($('btn-save-settings'), '✗ Failed');
+  }
 }
 
-function _clearSettings() {
-  localStorage.removeItem(_SETTINGS_KEY);
-  inputWo.value = '';
+async function _clearSettings() {
+  if (!CAN_MODIFY) return;
+  try {
+    await fetch('/api/mission', { method: 'DELETE' });
+  } catch (e) {
+    console.error('Failed to clear settings:', e);
+  }
+  
+  _setWoValue('');
   inputTarget.value = '100';
   _unlockInputs();
   updateCompletion();
   _btnFeedback($('btn-clear-settings'), '✓ Cleared!');
 }
 
-function _restoreSettings() {
+async function _restoreSettings() {
   try {
-    const raw = localStorage.getItem(_SETTINGS_KEY);
-    let s = raw ? JSON.parse(raw) : {};
-    // Migrate from old per-key storage if new key is missing
-    if (!s.wo  && localStorage.getItem('wo_value')  !== null) s.wo  = localStorage.getItem('wo_value');
-    if (!s.qty && localStorage.getItem('qty_value') !== null) s.qty = localStorage.getItem('qty_value');
-    if (s.wo)      { inputWo.value = s.wo; }
+    const response = await fetch('/api/mission');
+    if (!response.ok) return;
+    
+    const s = await response.json();
+    _setWoValue(s.wo || '');
     if (s.qty)     { inputTarget.value = s.qty; }
     if (s.log_dir) { logdirInput.value = s.log_dir; }
     if (s.wo || s.qty) { _lockInputs(); }
-  } catch (_) {}
+  } catch (e) {
+    console.error('Failed to restore settings:', e);
+  }
 }
 
 function _btnFeedback(btn, msg) {
@@ -124,11 +322,25 @@ function _btnFeedback(btn, msg) {
 
 $('btn-save-settings').addEventListener('click', _saveSettingsWithFeedback);
 $('btn-clear-settings').addEventListener('click', _clearSettings);
+if (btnEditSettings) btnEditSettings.addEventListener('click', _editSettings);
 
 const _btnSaveLogdir  = $('btn-save-logdir');
 const _btnClearLogdir = $('btn-clear-logdir');
 if (_btnSaveLogdir)  _btnSaveLogdir.addEventListener('click',  _saveSettingsWithFeedback);
 if (_btnClearLogdir) _btnClearLogdir.addEventListener('click', _clearSettings);
+
+if (inputWo) {
+  inputWo.addEventListener('change', () => {
+    _setWoCustomMode(inputWo.value === WO_CUSTOM_KEY);
+  });
+}
+
+if (btnWoRefresh) {
+  btnWoRefresh.addEventListener('click', () => {
+    if (!CAN_MODIFY) return;
+    _loadWorkOrders(true);
+  });
+}
 
 // ── Completion rate ───────────────────────────────────────────────────────────
 let _lastTotal = 0;
@@ -292,11 +504,13 @@ function buildRow(rec) {
   if (rec.result === 'STOP') tr.classList.add('row-stop');
   const badgeClass = { PASS: 'badge-pass', FAIL: 'badge-fail', STOP: 'badge-stop' }[rec.result] || '';
   const icon = RESULT_ICON[rec.result] || '';
+  const stationStr = (rec.station_id && rec.station_id !== '') ? esc(rec.station_id) : '—';
   const timeStr = esc(rec.time || (rec.datetime || '').slice(11, 19));
   const failSummary = rec.failed_items && rec.failed_items.length > 0
     ? rec.failed_items.map(i => `${esc(i.step_name)}: ${esc(i.measurement)} ${esc(i.value)}${esc(i.unit)}`).join(' | ')
     : '';
   tr.innerHTML = `
+    <td>${stationStr}</td>
     <td>${timeStr}</td>
     <td>${esc(rec.mac1)}</td>
     <td>${esc(rec.mac2)}</td>
@@ -409,6 +623,7 @@ async function browseNavigate(path) {
 }
 
 function openBrowseModal() {
+  if (!CAN_MODIFY) return;
   browseModal.classList.remove('hidden');
   browseNavigate(logdirInput.value.trim() || '');
 }
@@ -420,6 +635,7 @@ browseCancel.addEventListener('click', closeBrowseModal);
 browseModal.addEventListener('click', e => { if (e.target === browseModal) closeBrowseModal(); });
 
 browseSelect.addEventListener('click', async () => {
+  if (!CAN_MODIFY) return;
   if (!_browsePath) return;
   logdirInput.value = _browsePath;
   closeBrowseModal();
@@ -428,6 +644,7 @@ browseSelect.addEventListener('click', async () => {
 
 // ── Log dir apply ─────────────────────────────────────────────────────────────
 async function applyLogDir(dir) {
+  if (!CAN_MODIFY) return;
   if (!dir) return;
   logdirBrowse.disabled = true;
   try {
@@ -451,9 +668,9 @@ logdirInput.addEventListener('keydown', e => {
 });
 
 // ── Log Sweep ─────────────────────────────────────────────────────────────────
-const logSweepBtn = $('btn-log-sweep');
 if (logSweepBtn) {
   logSweepBtn.addEventListener('click', async () => {
+    if (!CAN_MODIFY) return;
     const dir = logdirInput.value.trim();
     const msg = dir
       ? `Delete ALL .txt files in:\n${dir}\n\nThis cannot be undone. Continue?`
@@ -478,7 +695,9 @@ if (logSweepBtn) {
 
 // ── Main init ─────────────────────────────────────────────────────────────────
 async function init() {
-  _restoreSettings();
+  await _loadAccessPolicy();
+  await _loadWorkOrders();
+  await _restoreSettings();
 
   try {
     const cfg = await fetch('/api/config').then(r => r.json());

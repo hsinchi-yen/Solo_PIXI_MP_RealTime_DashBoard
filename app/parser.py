@@ -7,14 +7,14 @@ from typing import Optional, TypedDict
 logger = logging.getLogger(__name__)
 
 # ── filename patterns ─────────────────────────────────────────────────────────
-# New format (no fixture_id prefix): YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
+# New format with STATION ID: STAID_YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
 FILENAME_RE = re.compile(
-    r"^(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
+    r"^(STA\d{2})_(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
 )
 
-# Legacy format (with fixture_id prefix): fixture_id_YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
+# Legacy format (no station ID): YYYYMMDD_HHMMSS_MAC1_MAC2_RESULT.txt
 FILENAME_RE_LEGACY = re.compile(
-    r"^(.+)_(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
+    r"^(\d{8})_(\d{6})_([0-9A-F]{12})_([0-9A-F]{12})_(PASS|FAIL|STOP)\.txt$"
 )
 
 # ── line-level compiled patterns (module-level, instantiated once) ─────────────
@@ -38,6 +38,7 @@ class FailedItem(TypedDict):
 
 class ParsedLog(TypedDict):
     filename: str
+    station_id: str    # e.g. "STA10", "STA20", empty string for legacy files
     fixture_id: str
     datetime: str      # ISO 8601, e.g. "2026-04-17T09:20:07"
     mac1: str
@@ -50,18 +51,20 @@ class ParsedLog(TypedDict):
 def parse(filepath: str) -> Optional[ParsedLog]:
     path = Path(filepath)
 
-    # Try new format first (no fixture_id prefix)
+    # Try new format first (with STATION ID)
     m = FILENAME_RE.match(path.name)
     if m:
-        date_str, time_str, mac1, mac2, result = m.groups()
+        station_id, date_str, time_str, mac1, mac2, result = m.groups()
         fixture_id_from_name: Optional[str] = None   # will be read from content
     else:
-        # Fall back to legacy format (fixture_id in filename)
+        # Fall back to legacy format (no station ID)
         m = FILENAME_RE_LEGACY.match(path.name)
         if not m:
             logger.warning("filename does not match naming convention: %s", path.name)
             return None
-        fixture_id_from_name, date_str, time_str, mac1, mac2, result = m.groups()
+        date_str, time_str, mac1, mac2, result = m.groups()
+        station_id = ""  # legacy files have no station ID
+        fixture_id_from_name = None
 
     try:
         dt = datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
@@ -73,6 +76,7 @@ def parse(filepath: str) -> Optional[ParsedLog]:
 
     return ParsedLog(
         filename=path.name,
+        station_id=station_id,
         fixture_id=fixture_id,
         datetime=dt.isoformat(),
         mac1=mac1,

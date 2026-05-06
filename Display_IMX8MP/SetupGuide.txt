@@ -1,0 +1,181 @@
+Dedicate Image with Chroiumn and docker installed
+Special build image : imx-image-multimedia-tep-imx8mp.rootfs-20260424063455.wic
+
+System Tweak :
+root@tep-imx8mp:~# growpart /dev/mmcblk2 2
+
+CHANGED: partition=2 start=704512 old: size=11644776 end=12349288 new: size=60415967 end=61120479
+root@tep-imx8mp:~# lsblk
+NAME         MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+mtdblock0     31:0    0    32M  0 disk 
+mmcblk2      179:0    0  29.1G  0 disk 
+|-mmcblk2p1  179:1    0 332.8M  0 part /run/media/boot-mmcblk2p1
+`-mmcblk2p2  179:2    0  28.8G  0 part /
+mmcblk2boot0 179:32   0     4M  1 disk 
+mmcblk2boot1 179:64   0     4M  1 disk 
+
+resize2fs /dev/mmcblk2p2
+
+
+-----------------------------
+
+Config Swap
+root@tep-imx8mp:~# ls /
+bin  boot  dev	etc  home  lib	lost+found  media  mnt	opt  proc  root  run  sbin  srv  sys  tmp  unit_tests  usr  var
+root@tep-imx8mp:~# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        28G  3.2G   24G  12% /
+devtmpfs        333M  4.0K  333M   1% /dev
+tmpfs           815M     0  815M   0% /dev/shm
+tmpfs           326M  9.8M  316M   3% /run
+tmpfs           815M  112K  815M   1% /tmp
+tmpfs           815M  236K  815M   1% /var/volatile
+/dev/mmcblk2p1  333M   33M  301M  10% /run/media/boot-mmcblk2p1
+tmpfs           163M   12K  163M   1% /run/user/0
+root@tep-imx8mp:~# fallocate -l 4G /swapfile
+root@tep-imx8mp:~# mkswap /swapfile
+mkswap: /swapfile: insecure permissions 0644, fix with: chmod 0600 /swapfile
+Setting up swapspace version 1, size = 4 GiB (4294963200 bytes)
+no label, UUID=6a8d7178-6b59-457a-a749-a2257ced6592
+root@tep-imx8mp:~# swapon /swapfile
+swapon: /swapfile: insecure permissions 0644, 0600 suggested.
+root@tep-imx8mp:~# free -h
+               total        used        free      shared  buff/cache   available
+Mem:           1.6Gi       301Mi       950Mi        18Mi       466Mi       1.3Gi
+Swap:          4.0Gi          0B       4.0Gi
+root@tep-imx8mp:~# 
+
+
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+echo "vm.swappiness=20" >> /etc/sysctl.conf
+root@tep-imx8mp:~# sysctl -p
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.rp_filter = 1
+net.core.rmem_max = 12582912
+net.core.wmem_max = 12582912
+net.core.rmem_default = 12582912
+net.core.wmem_default = 12582912
+vm.swappiness = 20
+
+
+Auto login
+[Service]
+Environment="TERM=linux"
+ExecStart=-/sbin/agetty -8 -a root -L %I 115200 $TERM
+Type=idle
+Restart=always
+UtmpIdentifier=%I
+TTYPath=/dev/%I
+TTYReset=yes
+TTYVHangup=yes
+KillMode=process
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+
+
+--------------------------------------------------
+
+```Bash shell
+# 1. 建置 image
+docker build -t pixi-dashboard .
+docker run -d -p 8080:8080 -v  "/run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw" --name pixi-dash pixi-dashboard
+
+# 2. 執行容器（掛載 rawlogs 目錄）
+docker run -p 8080:8080 -v "dock:/app/rawlogs:rw" pixi-dashboard
+
+# 背景執行
+#docker run -d -p 8080:8080 -v "${PWD}\rawlogs:/app/rawlogs:ro" --name pixi-dash pixi-dashboard
+
+docker run -d -p 8080:8080 -v  "/run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw" --name pixi-dash pixi-dashboard
+
+# 停止
+docker stop pixi-dash
+```
+
+啟動後開啟瀏覽器：**http://localhost:8080**
+
+
+----------------
+
+✔ buildl
+docker build -t pixi-dashboard .
+✔ run（只做一次）
+docker run -d --name pixi-dash ... pixi-dashboard
+✔ 之後操作
+docker stop pixi-dash
+docker start pixi-dash
+docker logs -f pixi-dash
+
+
+
+
+
+用的調整方式有這些：
+
+systemctl disable systemd-networkd-wait-online.service
+systemctl stop systemd-networkd-wait-online.service
+開機時就先把 Docker daemon 拉起來，不要等登入後第一個 docker 指令才啟動
+
+
+---------------------------------------------------------
+systemctl enable docker.service
+systemctl start docker.service
+
+
+
+
+-----------
+這兩個字型建議直接從 Noto 的官方來源拿。
+
+Noto Color Emoji
+
+官方 GitHub: https://github.com/googlefonts/noto-emoji
+直接看釋出頁或 repo 內的字型檔：fonts/NotoColorEmoji.ttf
+Noto Sans Symbols 2
+
+官方 GitHub: https://github.com/notofonts/noto-fonts
+這個 repo 裡可以找到 NotoSansSymbols2-Regular.ttf
+如果你想用比較穩定、可直接下載的來源，也可以從 Google Fonts 系列專案頁找：
+
+https://fonts.google.com/noto/specimen/Noto+Color+Emoji
+https://fonts.google.com/noto/specimen/Noto+Sans+Symbols+2
+在 Yocto 上，實務上有 3 種取得方式：
+
+直接從官方 repo 下載 .ttf，手動放到板子
+從你的 Yocto feed / 套件管理器安裝
+先查有沒有現成包：
+如果有，直接安裝對應 package。
+
+直接做進 Yocto image
+如果你有改 BSP / image recipe，最穩定的方式是把字型包加進 image，而不是開機後手動 copy。
+要注意一點：Noto Color Emoji 在某些 Chromium / fontconfig / freetype 組合上，彩色 emoji 支援不一定完整。
+如果你只是要讓 💾、🗑、📁、🧹 這些符號穩定顯示，很多時候 NotoSansSymbols2-Regular.ttf 已經能補一部分，但不一定涵蓋全部 emoji。最穩的還是兩個都裝。
+
+如果你要，我可以下一步直接幫你整理一版：
+
+Yocto 板子手動安裝字型的完整指令
+或改成不依賴字型的 SVG icon 方案
+
+
+
+
+docker 重啟.
+docker stop pixi-dash && docker rm pixi-dash && docker build -t pixi-dashboard . && docker run -d -p 8080:8080 -v "/run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw" --name pixi-dash --restart=always pixi-dashboard && docker logs -f pixi-dash
+
+
+
+chromium 優化 - clear cache
+#!/bin/bash
+# 关闭 Chromium
+pkill -f chromium
+
+# 清除缓存
+rm -rf ~/.cache/chromium/Default/Cache
+rm -rf ~/.cache/chromium/Default/Code\ Cache
+
+# 等待进程完全关闭
+sleep 2
+
+# 重启 Chromium
+/usr/bin/chromium --no-sandbox --start-fullscreen --kiosk --test-type http://localhost:8080

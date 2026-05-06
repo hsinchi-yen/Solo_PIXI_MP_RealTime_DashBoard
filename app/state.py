@@ -15,7 +15,8 @@ class DashboardState:
 
         # ── unique-MAC1 status tracking (source of truth for KPI counts) ──
         # Each MAC1 occupies exactly one bucket: PASS > FAIL > STOP
-        self.mac_status: dict[str, str] = {}
+        # Now stores (result, datetime) tuple to support "latest test wins" logic
+        self.mac_status: dict[str, tuple[str, datetime]] = {}
 
         # ── display records (kept for recent_records / stop_alerts / failure_stats) ──
         self.pass_records: dict[str, ParsedLog] = {}  # mac1 → newest PASS
@@ -62,15 +63,15 @@ class DashboardState:
 
     @property
     def pass_count(self) -> int:
-        return sum(1 for s in self.mac_status.values() if s == "PASS")
+        return sum(1 for (s, _) in self.mac_status.values() if s == "PASS")
 
     @property
     def fail_count(self) -> int:
-        return sum(1 for s in self.mac_status.values() if s == "FAIL")
+        return sum(1 for (s, _) in self.mac_status.values() if s == "FAIL")
 
     @property
     def stop_count(self) -> int:
-        return sum(1 for s in self.mac_status.values() if s == "STOP")
+        return sum(1 for (s, _) in self.mac_status.values() if s == "STOP")
 
     @property
     def total_count(self) -> int:
@@ -116,10 +117,22 @@ class DashboardState:
         mac1 = record["mac1"]
         dt = datetime.fromisoformat(record["datetime"])
 
-        # ── update unique MAC1 status (PASS > FAIL > STOP) ──
+        # ── update unique MAC1 status (latest test wins; if equal time, PASS > FAIL > STOP) ──
         current = self.mac_status.get(mac1)
-        if current is None or _PRIORITY[result] > _PRIORITY[current]:
-            self.mac_status[mac1] = result
+        should_update = False
+        if current is None:
+            should_update = True
+        else:
+            current_result, current_dt = current
+            if dt > current_dt:
+                # Newer test always wins
+                should_update = True
+            elif dt == current_dt and _PRIORITY[result] > _PRIORITY[current_result]:
+                # Same time, better result wins
+                should_update = True
+        
+        if should_update:
+            self.mac_status[mac1] = (result, dt)
 
         # ── retest tracking: count every test event per MAC1 ──
         self.mac_test_count[mac1] += 1
@@ -195,7 +208,11 @@ class DashboardState:
                 "retest_count": self.retest_count,
                 "retest_rate": self.retest_rate,
             },
-            "recent_records": list(self.recent_records),
+            "recent_records": sorted(
+                list(self.recent_records),
+                key=lambda r: r["datetime"],
+                reverse=True
+            ),
             "stop_alerts": self.stop_records[-20:],
             "failure_stats": dict(self.failure_stats.most_common(10)),
             "hourly_counts": {str(h): c for h, c in self.hourly_counts.items()},

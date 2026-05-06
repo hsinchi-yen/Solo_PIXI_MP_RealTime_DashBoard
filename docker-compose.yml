@@ -4,8 +4,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./rawlogs:/app/rawlogs:ro
-      - ./config:/app/config:ro
+      - ./rawlogs:/app/rawlogs:rw
+      - ./config:/app/config:rw
+      - /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw
     restart: unless-stopped
     deploy:
       resources:

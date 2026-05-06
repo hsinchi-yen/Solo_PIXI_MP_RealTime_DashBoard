@@ -143,6 +143,16 @@ header {
   width: 180px;
   transition: border-color .2s;
 }
+.hf-select {
+  appearance: none;
+  padding-right: 24px;
+}
+.hf-input-wo-custom {
+  width: 180px;
+}
+.hf-input-wo-custom.hidden {
+  display: none;
+}
 .hf-input-qty { width: 90px; }
 .hf-input:focus { outline: none; border-color: var(--info); }
 .hf-input:disabled {
@@ -183,6 +193,7 @@ header {
 .hf-btn:hover          { background: #2a2a48; border-color: var(--info); }
 .hf-btn-save:hover     { border-color: var(--pass); color: var(--pass); }
 .hf-btn-clear:hover    { border-color: var(--fail); color: var(--fail); }
+.hf-btn-refresh:hover  { border-color: var(--info); color: var(--info); }
 .hf-btn.btn-feedback   { color: var(--pass); border-color: var(--pass); }
 
 /* Block 3: Clock + Date */
@@ -234,6 +245,20 @@ header {
 .theme-btn:hover { background: #2a2a48; color: var(--text); }
 .theme-btn.light-active { background: #fbbf24; color: #1a1000; border-color: #f59e0b; }
 
+/* Edit button styles */
+.hf-btn-edit {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+.hf-btn-edit:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+.hf-btn-edit.hidden {
+  display: none;
+}
+
 /* ── FOOTER: log dir control ─────────────────────────────────────── */
 .logdir-bar {
   height: 36px;
@@ -265,6 +290,13 @@ header {
   transition: border-color .2s;
 }
 .logdir-bar input:focus { outline: none; border-color: var(--info); }
+.logdir-bar input:disabled {
+  background: #0f0f18;
+  color: #7a7a8a;
+  border-color: #2a2a3a;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
 .logdir-bar button {
   background: #1e1e30;
   border: 1px solid var(--border);
@@ -276,6 +308,13 @@ header {
   flex-shrink: 0;
 }
 .logdir-bar button:hover { background: #2a2a48; border-color: var(--info); }
+.logdir-bar button:disabled {
+  background: #151522;
+  color: #6f6f82;
+  border-color: #2a2a3a;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
 #logdir-browse { padding: 3px 8px; font-size: 16px; }
 .logdir-sweep-btn {
   background: #1e1e30;
@@ -470,6 +509,7 @@ header {
   position: sticky;
   top: 0;
 }
+.records-table colgroup .col-station { width: 73px; }
 .records-table colgroup .col-time   { width: 72px; }
 .records-table colgroup .col-mac1   { width: 120px; }
 .records-table colgroup .col-mac2   { width: 120px; }
@@ -657,7 +697,8 @@ header {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.stats-section-flex { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.stats-section-hourly { flex: 1.5; display: flex; flex-direction: column; overflow: hidden; }
+.stats-section-flex { flex: 0.6; display: flex; flex-direction: column; overflow: hidden; }
 .stats-section-title {
   font-size: 11px;
   font-weight: 700;
@@ -833,6 +874,7 @@ body.light-mode .app-title       { color: #111827; }
   .records-table    { font-size: 11px; }
   .records-table thead th  { padding: 4px 6px; font-size: 10px; }
   .record-row td    { padding: 3px 6px; }
+  .records-table colgroup .col-station { width: 62px; }
   .records-table colgroup .col-time  { width: 62px; }
   .records-table colgroup .col-mac1  { width: 100px; }
   .records-table colgroup .col-mac2  { width: 100px; }
