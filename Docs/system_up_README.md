@@ -173,6 +173,7 @@ curl -s 'http://localhost:8080/api/access'
 | Docker build 失敗 | Docker 未啟動 | 先啟動 Docker |
 | `address already in use` | Port 8080 已被佔用 | `docker stop pixi-dash` 或改用 `-p 8081:8080` |
 | 畫面顯示「0 筆資料」 | rawlogs 路徑設定錯誤 | 在 UI 右上角點 **Browse** 選取正確目錄 |
+| LOG DIR Browse 看不到 `/run/media/nvme0n1p1` | 舊版後端白名單或容器未重建 | 重新 build/redeploy 後執行 `curl -s 'http://localhost:8080/api/browse-dir?path=/run/media/nvme0n1p1'`，確認 `current` 回傳該路徑 |
 | WO 下拉是空的 | NVMe 未掛載進容器 | 確認 `-v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw` 存在；執行 `curl localhost:8080/api/work-orders?refresh=1` 驗證 |
 | SSE 連線燈號一直紅色 | 伺服器未啟動或防火牆阻擋 | 確認容器正常運行，檢查防火牆設定 |
 | 遠端連入控制項反灰 | 安全機制：修改權限僅限 localhost | 在設備本機瀏覽器開啟 `http://localhost:8080` 操作 |

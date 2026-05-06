@@ -2,6 +2,7 @@
 Unit tests for the pure-logic functions in realtime_splitter_app.py.
 Covers: split_log_content, parse_segment, build_output_filename
 """
+import os
 import re
 import pytest
 
@@ -40,7 +41,7 @@ def parse_segment(segment):
     return dict(mac1=mac1, mac2=mac2, date=date_str, time=time_str, result=result)
 
 
-def build_output_filename(parsed):
+def build_output_filename(parsed, station_id=None):
     date = parsed.get('date')
     time_str = parsed.get('time')
     mac1 = parsed.get('mac1') or ""
@@ -52,7 +53,54 @@ def build_output_filename(parsed):
         return None
     if result not in _VALID_RESULTS:
         return None
+    if station_id:
+        return f"STA{station_id}_{date}_{time_str}_{mac1}_{mac2}_{result}.txt"
     return f"{date}_{time_str}_{mac1}_{mac2}_{result}.txt"
+
+
+def resolve_out_dir(base_out_dir, station_id):
+    """When station_id is set, files go into {base_out_dir}/STA{station_id}/."""
+    if not station_id:
+        return base_out_dir
+    return os.path.join(base_out_dir, f"STA{station_id}")
+
+
+def build_wo_filename(parsed, wo):
+    date = parsed.get('date')
+    time_str = parsed.get('time')
+    mac1 = parsed.get('mac1') or ""
+    mac2 = parsed.get('mac2') or ""
+    result = parsed.get('result')
+    if not all([date, time_str, mac1, mac2, result]):
+        return None
+    if not (_MAC_RE.match(mac1) and _MAC_RE.match(mac2)):
+        return None
+    if result not in _VALID_RESULTS:
+        return None
+    return f"{wo}_{date}_{time_str}_{mac1}_{mac2}_{result}.txt"
+
+
+def get_wo_dest(dest_dir, wo):
+    if not dest_dir or not wo:
+        return None
+    if '@' in dest_dir and ':' in dest_dir:
+        try:
+            user_host, remote_path = dest_dir.split(':', 1)
+            user, host = user_host.split('@', 1)
+        except ValueError:
+            return None
+        parent = remote_path.rstrip('/').rsplit('/', 1)[0]
+        return f"{user}@{host}:{parent}/{wo}/"
+    else:
+        parent = os.path.dirname(dest_dir.rstrip('/\\'))
+        return os.path.join(parent, wo)
+
+
+def scan_existing_files(output_dir):
+    if not os.path.isdir(output_dir):
+        return set()
+    return {f for f in os.listdir(output_dir)
+            if os.path.isfile(os.path.join(output_dir, f))}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -225,32 +273,189 @@ class TestFixtureFiles:
     def test_pass_fixture(self, tmp_path):
         import pathlib
         fixture = pathlib.Path(__file__).parent / "fixtures" / \
-                  "20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+                  "STA10_20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
         content = fixture.read_text(encoding='utf-8')
         segs = split_log_content(content)
         assert len(segs) == 1
         p = parse_segment(segs[0])
-        fn = build_output_filename(p)
-        assert fn == "20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+        fn = build_output_filename(p, station_id="10")
+        assert fn == "STA10_20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
 
     def test_fail_fixture(self, tmp_path):
         import pathlib
         fixture = pathlib.Path(__file__).parent / "fixtures" / \
-                  "20260106_090140_001F7B6BD21E_001F7B6BD21F_FAIL.txt"
+                  "STA10_20260106_090140_001F7B6BD21E_001F7B6BD21F_FAIL.txt"
         content = fixture.read_text(encoding='utf-8')
         segs = split_log_content(content)
         assert len(segs) == 1
         p = parse_segment(segs[0])
-        fn = build_output_filename(p)
-        assert fn == "20260106_090140_001F7B6BD21E_001F7B6BD21F_FAIL.txt"
+        fn = build_output_filename(p, station_id="10")
+        assert fn == "STA10_20260106_090140_001F7B6BD21E_001F7B6BD21F_FAIL.txt"
 
     def test_stop_fixture(self, tmp_path):
         import pathlib
         fixture = pathlib.Path(__file__).parent / "fixtures" / \
-                  "20260106_090500_AABBCC001100_AABBCC001101_STOP.txt"
+                  "STA10_20260106_090500_AABBCC001100_AABBCC001101_STOP.txt"
         content = fixture.read_text(encoding='utf-8')
         segs = split_log_content(content)
         assert len(segs) == 1
         p = parse_segment(segs[0])
-        fn = build_output_filename(p)
-        assert fn == "20260106_090500_AABBCC001100_AABBCC001101_STOP.txt"
+        fn = build_output_filename(p, station_id="10")
+        assert fn == "STA10_20260106_090500_AABBCC001100_AABBCC001101_STOP.txt"
+
+
+# ── build_output_filename with station_id ────────────────────────────────────
+
+class TestBuildOutputFilenameWithStation:
+    def _ok(self):
+        return dict(date="20260105", time="171900",
+                    mac1="001F7B6BD20E", mac2="001F7B6BD20F", result="PASS")
+
+    def test_no_station_id_produces_plain_filename(self):
+        fn = build_output_filename(self._ok(), station_id=None)
+        assert fn == "20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+
+    def test_station_id_prefixes_with_sta(self):
+        fn = build_output_filename(self._ok(), station_id="20")
+        assert fn == "STA20_20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+
+    def test_station_id_empty_string_treated_as_no_station(self):
+        fn = build_output_filename(self._ok(), station_id="")
+        assert fn == "20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+
+    def test_station_id_all_numeric_options(self):
+        for sid in ("10", "20", "30", "40", "50", "60", "70", "80"):
+            fn = build_output_filename(self._ok(), station_id=sid)
+            assert fn is not None and fn.startswith(f"STA{sid}_")
+
+
+# ── resolve_out_dir ───────────────────────────────────────────────────────────
+
+class TestResolveOutDir:
+    def test_no_station_returns_base_unchanged(self, tmp_path):
+        base = str(tmp_path / "rawlogs" / "LOG" / "20")
+        assert resolve_out_dir(base, "") == base
+        assert resolve_out_dir(base, None) == base
+
+    def test_station_appends_sta_subdir(self, tmp_path):
+        base = str(tmp_path / "rawlogs" / "LOG" / "20")
+        result = resolve_out_dir(base, "20")
+        assert result == os.path.join(base, "STA20")
+
+    def test_station_subdir_is_always_one_level_deep(self, tmp_path):
+        base = str(tmp_path / "out")
+        result = resolve_out_dir(base, "10")
+        assert os.path.dirname(result) == base
+
+    def test_station_subdir_uses_sta_prefix(self, tmp_path):
+        base = str(tmp_path / "out")
+        result = resolve_out_dir(base, "50")
+        assert os.path.basename(result) == "STA50"
+
+    def test_does_not_create_directory(self, tmp_path):
+        base = str(tmp_path / "out")
+        result = resolve_out_dir(base, "20")
+        assert not os.path.exists(result)  # resolve only; caller creates dir
+
+
+# ── build_wo_filename ─────────────────────────────────────────────────────────
+
+class TestBuildWoFilename:
+    def _ok(self):
+        return dict(date="20260105", time="171900",
+                    mac1="001F7B6BD20E", mac2="001F7B6BD20F", result="PASS")
+
+    def test_happy_path(self):
+        fn = build_wo_filename(self._ok(), wo="5101-260129012")
+        assert fn == "5101-260129012_20260105_171900_001F7B6BD20E_001F7B6BD20F_PASS.txt"
+
+    def test_wo_prefix_is_first(self):
+        fn = build_wo_filename(self._ok(), wo="WO123")
+        assert fn.startswith("WO123_")
+
+    def test_all_results_supported(self):
+        for result in ("PASS", "FAIL", "STOP"):
+            p = {**self._ok(), 'result': result}
+            fn = build_wo_filename(p, wo="WO1")
+            assert fn is not None and fn.endswith(f"_{result}.txt")
+
+    @pytest.mark.parametrize("missing_key", ['date', 'time', 'mac1', 'mac2', 'result'])
+    def test_missing_field_returns_none(self, missing_key):
+        p = {**self._ok(), missing_key: None}
+        assert build_wo_filename(p, wo="WO1") is None
+
+    def test_invalid_mac_returns_none(self):
+        p = {**self._ok(), 'mac1': 'TOOSHORT'}
+        assert build_wo_filename(p, wo="WO1") is None
+
+    def test_invalid_result_returns_none(self):
+        p = {**self._ok(), 'result': 'UNKNOWN'}
+        assert build_wo_filename(p, wo="WO1") is None
+
+
+# ── get_wo_dest ───────────────────────────────────────────────────────────────
+
+class TestGetWoDest:
+    def test_remote_path_sibling_of_rawlogs(self):
+        dest = "root@10.20.31.106:/run/media/nvme0n1p1/rawlogs/"
+        result = get_wo_dest(dest, "WO5101")
+        assert result == "root@10.20.31.106:/run/media/nvme0n1p1/WO5101/"
+
+    def test_remote_path_no_trailing_slash(self):
+        dest = "root@host:/a/b/rawlogs"  # no trailing slash — same parent as with slash
+        result = get_wo_dest(dest, "WO1")
+        assert result == "root@host:/a/b/WO1/"
+
+    def test_local_path_sibling(self, tmp_path):
+        dest = str(tmp_path / "rawlogs")
+        result = get_wo_dest(dest, "WO1")
+        assert result == str(tmp_path / "WO1")
+
+    def test_empty_wo_returns_none(self):
+        assert get_wo_dest("root@host:/a/b/", "") is None
+        assert get_wo_dest("root@host:/a/b/", None) is None
+
+    def test_empty_dest_returns_none(self):
+        assert get_wo_dest("", "WO1") is None
+        assert get_wo_dest(None, "WO1") is None
+
+
+# ── scan_existing_files ───────────────────────────────────────────────────────
+
+class TestScanExistingFiles:
+    def test_returns_empty_set_for_missing_dir(self, tmp_path):
+        missing = str(tmp_path / "no_such_dir")
+        assert scan_existing_files(missing) == set()
+
+    def test_lists_files_in_dir(self, tmp_path):
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.txt").write_text("b")
+        result = scan_existing_files(str(tmp_path))
+        assert result == {"a.txt", "b.txt"}
+
+    def test_excludes_subdirectories(self, tmp_path):
+        (tmp_path / "file.txt").write_text("x")
+        (tmp_path / "subdir").mkdir()
+        result = scan_existing_files(str(tmp_path))
+        assert "subdir" not in result
+        assert "file.txt" in result
+
+    def test_sta_subdir_seeded_correctly(self, tmp_path):
+        sta_dir = tmp_path / "STA20"
+        sta_dir.mkdir()
+        (sta_dir / "STA20_20260105_171900_AABBCC001100_AABBCC001101_PASS.txt").write_text("x")
+        result = scan_existing_files(str(sta_dir))
+        assert "STA20_20260105_171900_AABBCC001100_AABBCC001101_PASS.txt" in result
+
+    def test_seen_files_from_sta_subdir_skips_duplicate_on_restart(self, tmp_path):
+        # Simulate: write a file into STA20 subdir, then re-seed seen_files
+        out = str(tmp_path)
+        sta_dir = tmp_path / "STA20"
+        sta_dir.mkdir()
+        filename = "STA20_20260105_171900_AABBCC001100_AABBCC001101_PASS.txt"
+        (sta_dir / filename).write_text("content")
+
+        # resolve_out_dir → STA20, scan → finds the file
+        effective = resolve_out_dir(out, "20")
+        seen = scan_existing_files(effective)
+        assert filename in seen  # would be skipped on next split run

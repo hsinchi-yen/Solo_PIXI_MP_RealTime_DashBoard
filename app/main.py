@@ -47,7 +47,11 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def _allowed_roots() -> list[Path]:
-    roots = [BASE_DIR.resolve(), config.paths.log_dir.resolve()]
+    roots = [
+        BASE_DIR.resolve(),
+        config.paths.log_dir.resolve(),
+        WORK_ORDER_ROOT.resolve(),
+    ]
     seen = set()
     out = []
     for r in roots:
@@ -459,7 +463,12 @@ async def browse_dir(request: Request, path: str = ""):
         return denied
 
     if not path or not path.strip():
-        p = config.paths.log_dir
+        # Prefer the work-order mount as browse entry when it exists.
+        # This lets users pick WO/rawlogs paths directly on deployed Linux targets.
+        if WORK_ORDER_ROOT.is_dir() and _is_allowed_path(WORK_ORDER_ROOT.resolve()):
+            p = WORK_ORDER_ROOT
+        else:
+            p = config.paths.log_dir
     else:
         p = Path(path.strip())
         if not p.is_absolute():

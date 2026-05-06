@@ -330,6 +330,13 @@ def get_wo_dest(dest_dir, wo):
         return os.path.join(parent, wo)
 
 
+def resolve_out_dir(base_out_dir, station_id):
+    """When station_id is set, files go into {base_out_dir}/STA{station_id}/."""
+    if not station_id:
+        return base_out_dir
+    return os.path.join(base_out_dir, f"STA{station_id}")
+
+
 def scan_existing_files(output_dir):
     if not os.path.isdir(output_dir):
         return set()
@@ -661,7 +668,12 @@ class SplitCopyThread(QThread):
         segments = split_log_content(content)
         new_count = skipped_count = 0
         new_file_names = []
-        real_out_dir = os.path.realpath(self.output_dir)
+        if self.station_id:
+            actual_out_dir = os.path.join(self.output_dir, f"STA{self.station_id}")
+            os.makedirs(actual_out_dir, exist_ok=True)
+        else:
+            actual_out_dir = self.output_dir
+        real_out_dir = os.path.realpath(actual_out_dir)
 
         for seg in segments:
             parsed = parse_segment(seg)
@@ -672,7 +684,7 @@ class SplitCopyThread(QThread):
             if filename in self.seen_files:
                 continue
 
-            out_path = os.path.join(self.output_dir, filename)
+            out_path = os.path.join(actual_out_dir, filename)
             # Path containment guard — reject traversal attempts from log content
             if os.path.commonpath([os.path.realpath(out_path), real_out_dir]) != real_out_dir:
                 self.copy_fail.emit(f"Rejected unsafe path: {filename}")
@@ -864,7 +876,7 @@ class RealtimeSplitterApp(QMainWindow):
         self.setWindowTitle('Log Splitter — Live')
         self.setMinimumSize(480, 297)
         self.setMaximumSize(960, 800)
-        self.resize(720, 418)
+        self.resize(720, 600)
         self.setStyleSheet(STYLESHEET)
         if os.path.exists(APP_ICON_PATH):
             self.setWindowIcon(QIcon(APP_ICON_PATH))
@@ -1273,13 +1285,10 @@ class RealtimeSplitterApp(QMainWindow):
         
         self._log(f"Settings saved: STA{self.station_combo.currentText()}, SRC, OUT, DST, SSH")
         
-        # Visual feedback
+        # Visual feedback — QTimer keeps the UI thread unblocked
         orig = self.btn_save_station.text()
         self.btn_save_station.setText("✓")
-        QApplication.processEvents()
-        import time
-        time.sleep(0.5)
-        self.btn_save_station.setText(orig)
+        QTimer.singleShot(500, lambda: self.btn_save_station.setText(orig))
 
     def _restore_all_settings(self):
         """Restore all saved settings from previous session."""
@@ -1502,8 +1511,10 @@ class RealtimeSplitterApp(QMainWindow):
         if not self._validate():
             return
         out = self.dir_output_input.text().strip()
-        os.makedirs(out, exist_ok=True)
-        self._seen_files = scan_existing_files(out)
+        station_id = self.station_combo.currentText()
+        effective_out = resolve_out_dir(out, station_id)
+        os.makedirs(effective_out, exist_ok=True)
+        self._seen_files = scan_existing_files(effective_out)
         self._session_written = 0
         self._session_synced = 0
         self._lbl_written.setText("0")
@@ -1540,7 +1551,7 @@ class RealtimeSplitterApp(QMainWindow):
 
         src = self.file_input.text().strip()
         self._log(f"Watching  {src}  every {interval}s")
-        self._log(f"OUT  {out}" + (f"  →  DST  {dst}" if dst else ""))
+        self._log(f"OUT  {effective_out}" + (f"  →  DST  {dst}" if dst else ""))
         self._log(f"Seeded {len(self._seen_files)} existing file(s) — will skip")
 
         # Run an immediate first split to catch current content right away

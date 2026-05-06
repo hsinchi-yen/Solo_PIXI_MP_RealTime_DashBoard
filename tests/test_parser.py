@@ -106,12 +106,12 @@ def test_fail_item_value_exceeds_limit():
 # ── Edge cases ────────────────────────────────────────────────────────────────
 
 def test_empty_file_returns_record_from_filename(tmp_path):
-    # Legacy format (fixture_id prefix) still supported
-    name = "5101-001_20260417_090000_AABBCC001122_AABBCC001123_PASS.txt"
+    name = "STA20_20260417_090000_AABBCC001122_AABBCC001123_PASS.txt"
     f = tmp_path / name
     f.write_text("")
     r = parse(str(f))
     assert r is not None
+    assert r["station_id"] == "STA20"
     assert r["result"] == "PASS"
     assert r["duration"] == ""
     assert r["failed_items"] == []
