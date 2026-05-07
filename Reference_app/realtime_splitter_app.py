@@ -949,6 +949,27 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_expand.setVisible(False)
         self.btn_expand.clicked.connect(self._expand_ui)
 
+        # ── TN Logo badge (far left of header) ──
+        self.tn_badge = QLabel()
+        self.tn_badge.setAlignment(Qt.AlignCenter)
+        self.tn_badge.setFixedSize(30, 26)
+        _logo_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tn_log.png')
+        if getattr(sys, 'frozen', False):
+            _logo_file = os.path.join(os.path.dirname(sys.executable), 'tn_log.png')
+        if os.path.exists(_logo_file):
+            from PyQt5.QtGui import QPixmap
+            _pm = QPixmap(_logo_file).scaled(30, 26, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.tn_badge.setPixmap(_pm)
+            self.tn_badge.setStyleSheet("background: transparent; border: none;")
+        else:
+            self.tn_badge.setText("TN")
+            self.tn_badge.setStyleSheet(
+                "background-color: #0078D4; color: #FFFFFF; font-weight: 800;"
+                " border-radius: 4px; font-size: 12px; font-family: Arial;"
+            )
+
+        h.addWidget(self.tn_badge)
+        h.addSpacing(4)
         h.addWidget(self._dot)
         h.addWidget(self._dot_state)
         h.addSpacing(4)
