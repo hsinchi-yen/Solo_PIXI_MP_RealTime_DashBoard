@@ -1,5 +1,5 @@
 {
   "wo": "WO-LOCAL",
   "qty": 123,
-  "log_dir": "D:/tmp/rawlogs"
+  "log_dir": "/run/media/nvme0n1p1"
 }

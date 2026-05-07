@@ -343,11 +343,16 @@ async def path_health(wo: str = ""):
     rawlogs_root = (WORK_ORDER_ROOT / "rawlogs").resolve()
     log_dir = config.paths.log_dir.resolve()
     wo_name = (wo or "").strip()
-    wo_path = (wo_root / wo_name).resolve() if wo_name else None
 
-    wo_path_exists = False
-    if wo_path is not None:
-        wo_path_exists = wo_path.is_dir() and _is_within(wo_path, wo_root)
+    # Use _find_wo_dir so bracket-named dirs (e.g. [5101-xxx]) are resolved
+    # correctly — consistent with how /api/upload resolves WO directories.
+    if wo_name:
+        wo_dir = _find_wo_dir(wo_name)
+        wo_path_exists = wo_dir is not None
+        wo_path_str = str(wo_dir) if wo_dir else str(wo_root / wo_name)
+    else:
+        wo_path_exists = False
+        wo_path_str = ""
 
     return JSONResponse(
         {
@@ -358,7 +363,7 @@ async def path_health(wo: str = ""):
             "log_dir": str(log_dir),
             "log_dir_exists": log_dir.is_dir(),
             "wo": wo_name,
-            "wo_path": str(wo_path) if wo_path else "",
+            "wo_path": wo_path_str,
             "wo_path_exists": wo_path_exists,
         }
     )

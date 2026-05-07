@@ -151,9 +151,9 @@ function _getWoFolderPath() {
   return `${DEFAULT_WO_ROOT}/${wo}`;
 }
 
-function _refreshWoPathLabel(exists = null) {
+function _refreshWoPathLabel(exists = null, resolvedPath = null) {
   if (!woFolderPath) return;
-  const path = _getWoFolderPath();
+  const path = resolvedPath || _getWoFolderPath();
   if (!path) {
     woFolderPath.textContent = 'WO PATH: —';
     woFolderPath.classList.remove('ok', 'bad');
@@ -188,7 +188,7 @@ async function _refreshPathHealth() {
     const data = await res.json();
     _setHealthLabel(opsWoRoot, !!data.wo_root_exists);
     _setHealthLabel(opsRawlogs, !!data.rawlogs_root_exists);
-    _refreshWoPathLabel(wo ? !!data.wo_path_exists : null);
+    _refreshWoPathLabel(wo ? !!data.wo_path_exists : null, data.wo_path || null);
   } catch (_) {
     _setHealthLabel(opsWoRoot, false, !CAN_MODIFY);
     _setHealthLabel(opsRawlogs, false, !CAN_MODIFY);
@@ -353,10 +353,8 @@ async function _loadAccessPolicy() {
       CAN_DB = !!data.can_db;
     }
   } catch (_) {}
-  _setModifyControlsEnabled(CAN_MODIFY);
-  _setDbSettingsEnabled(CAN_DB);
-  _refreshOpsStrip();
-  _refreshPathHealth();
+  _setModifyControlsEnabled(CAN_MODIFY);  // calls _refreshOpsStrip + _refreshPathHealth
+  _setDbSettingsEnabled(CAN_DB);          // calls _refreshOpsStrip
 }
 
 function _setDbSettingsEnabled(enabled) {
@@ -468,16 +466,11 @@ function _passesFilter(rec) {
 
 function _sortRecords(rows) {
   if (!recordsFilter.anomalyFirst) return rows;
-  const rank = r => {
-    if (r.result === 'STOP') return 2;
-    if (r.result === 'FAIL') return 1;
-    return 0;
-  };
-  return [...rows].sort((a, b) => {
-    const d = rank(b) - rank(a);
-    if (d !== 0) return d;
-    return 0;
-  });
+  const rank = r => (r.result === 'STOP' ? 2 : r.result === 'FAIL' ? 1 : 0);
+  return rows
+    .map((r, i) => [rank(r), i, r])
+    .sort((a, b) => b[0] - a[0] || a[1] - b[1])
+    .map(e => e[2]);
 }
 
 function renderRecordsFromCache() {
@@ -1217,8 +1210,7 @@ function setDbConnectionStatus(valid) {
   dbConnectionValid = valid;
   dbBreathingLight.className = valid ? 'conn-dot connected' : 'conn-dot disconnected';
   
-  // Disable buttons if not valid or no WO
-  const hasWo = _getWoValue() && _getWoValue() !== WO_CUSTOM_KEY;
+  const hasWo = !!_getWoValue();
   const canOperate = valid && hasWo && CAN_DB;
   btnUpload.disabled = !canOperate;
   btnAutoUpload.disabled = !canOperate;
@@ -1329,10 +1321,10 @@ async function pollUploadStatus() {
       
       if (data.auto_running) {
         btnAutoUpload.textContent = 'Auto Upload: ON';
-        btnAutoUpload.style.color = 'var(--pass)';
+        btnAutoUpload.classList.add('light-active');
       } else {
         btnAutoUpload.textContent = 'Auto Upload: OFF';
-        btnAutoUpload.style.color = '';
+        btnAutoUpload.classList.remove('light-active');
       }
       
       if (data.is_uploading) {
