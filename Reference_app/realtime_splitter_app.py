@@ -1158,13 +1158,12 @@ class RealtimeSplitterApp(QMainWindow):
         h_cfg.setSpacing(8)
         h_cfg.addStretch(1)
         
-<<<<<<< HEAD
         # DST hint label
         hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
         hint.setObjectName("statusKey")
         hint.setStyleSheet("color: #5D5D5D; font-size: 9px; padding-left: 33px;")
-        lay.addWidget(hint)
-=======
+        lay_eng.addWidget(hint)
+
         self.btn_export = QPushButton("匯出設定")
         self.btn_export.setObjectName("configBtn")
         self.btn_export.clicked.connect(self._export_config)
@@ -1182,7 +1181,6 @@ class RealtimeSplitterApp(QMainWindow):
         h_cfg.addWidget(self.btn_export)
         h_cfg.addWidget(self.btn_save_station)
         lay_eng.addLayout(h_cfg)
->>>>>>> dcb3e74 (feat(ui): implement dual mode (OP/Eng), mini-bar stats, and config management)
 
         self._config_widgets = [
             self.file_input, self._btn_src,
