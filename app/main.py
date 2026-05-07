@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 MISSION_FILE = Path(__file__).parent.parent / "config" / "mission.json"
 WORK_ORDER_ROOT = Path("/run/media/nvme0n1p1")
+WORK_ORDER_ALT_ROOT = Path("/nvme0n1p1")
 WORK_ORDER_MIN_LEN = int(os.getenv("WORK_ORDER_MIN_LEN", "13"))
 WORK_ORDER_MAX_LEN = int(os.getenv("WORK_ORDER_MAX_LEN", "16"))
 WORK_ORDER_CACHE_TTL_SEC = 60
@@ -53,6 +54,11 @@ def _allowed_roots() -> list[Path]:
         config.paths.log_dir.resolve(),
         WORK_ORDER_ROOT.resolve(),
     ]
+    try:
+        if WORK_ORDER_ALT_ROOT.exists():
+            roots.append(WORK_ORDER_ALT_ROOT.resolve())
+    except OSError:
+        pass
     seen = set()
     out = []
     for r in roots:
