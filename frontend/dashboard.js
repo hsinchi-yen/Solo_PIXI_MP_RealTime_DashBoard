@@ -66,7 +66,6 @@ const stationQuickChips = $('station-quick-chips');
 const recordsCountMeta = $('records-count-meta');
 const opsMode = $('ops-mode');
 const opsWo = $('ops-wo');
-const opsLogdir = $('ops-logdir');
 const opsDb = $('ops-db');
 const opsWoRoot = $('ops-wo-root');
 const opsRawlogs = $('ops-rawlogs');
@@ -126,9 +125,6 @@ function _refreshOpsStrip() {
     const wo = _getWoValue();
     opsWo.textContent = wo || '—';
     opsWo.className = `ops-value ${wo ? 'ok' : ''}`;
-  }
-  if (opsLogdir) {
-    opsLogdir.textContent = _shortPath(logdirInput?.value || DEFAULT_LOG_DIR);
   }
   if (opsDb) {
     if (!CAN_DB) {
@@ -920,10 +916,9 @@ function showProgress(current, total) {
 function hideProgress() { overlay.classList.add('hidden'); }
 
 // ── Connection ────────────────────────────────────────────────────────────────
-const connLabel = $('conn-label');
 function setConnected(yes) {
   connDot.className = 'conn-dot ' + (yes ? 'connected' : 'disconnected');
-  if (connLabel) connLabel.textContent = yes ? 'CONNECTED' : 'DISCONNECTED';
+  connDot.setAttribute('aria-label', yes ? 'Connected' : 'Disconnected');
 }
 
 // ── Full snapshot render ──────────────────────────────────────────────────────

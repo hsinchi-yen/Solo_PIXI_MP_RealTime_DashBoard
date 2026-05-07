@@ -88,7 +88,6 @@
       <div class="upload-controls">
         <button id="btn-db-settings" class="hf-btn" title="Database settings" aria-label="Open database settings">⚙️</button>
         <div id="db-breathing-light" class="conn-dot disconnected" title="DB connection status"></div>
-        <span id="wo-folder-path" class="wo-folder-path" title="Selected WO folder path">WO PATH: —</span>
         <button id="btn-upload" class="hf-btn hf-btn-save" title="Upload all records for selected WO">Upload</button>
         <button id="btn-auto-upload" class="hf-btn" title="Toggle auto upload">Auto Upload: OFF</button>
         <div id="upload-status-text" class="upload-status-text" aria-live="polite"></div>
@@ -115,10 +114,6 @@
   <div class="ops-chip">
     <span class="ops-label">WO</span>
     <span id="ops-wo" class="ops-value">—</span>
-  </div>
-  <div class="ops-chip ops-chip-wide">
-    <span class="ops-label">LOG DIR</span>
-    <span id="ops-logdir" class="ops-value">—</span>
   </div>
   <div class="ops-chip">
     <span class="ops-label">DB</span>
@@ -250,7 +245,7 @@
 
 <!-- Footer: log directory control -->
 <footer class="logdir-bar">
-  <span class="logdir-bar-label">📂 LOG DIR</span>
+  <span id="wo-folder-path" class="wo-folder-path" title="WO folder path — green: exists, red: not found">WO PATH: —</span>
   <input type="text" id="logdir-input" placeholder="C:\path\to\rawlogs" title="Log directory path">
   <button id="logdir-browse" title="Browse directories" aria-label="Browse log directories">📁</button>
   <button id="logdir-wo-root" class="hf-btn" title="Switch to WO root directory">WO Root</button>
@@ -258,8 +253,7 @@
   <button id="btn-save-logdir" class="hf-btn hf-btn-save" title="Apply log directory — restarts watcher">▶ Apply</button>
   <button id="btn-log-sweep" class="logdir-sweep-btn" title="Delete all .txt files in this directory">🧹 Sweep</button>
   <div class="logdir-bar-sep"></div>
-  <div id="conn-dot" class="conn-dot disconnected" title="SSE connection status" aria-hidden="true"></div>
-  <span id="conn-label" class="conn-label" aria-live="polite">DISCONNECTED</span>
+  <div id="conn-dot" class="conn-dot disconnected" title="SSE connection status" aria-label="Connection status" aria-live="polite"></div>
   <button id="theme-btn" class="theme-btn" title="Toggle daylight or dark mode" aria-label="Toggle theme">☀ DAY</button>
 </footer>
 
@@ -279,6 +273,6 @@
   </div>
 </div>
 
-<script src="/static/dashboard.js?v=20"></script>
+<script src="/static/dashboard.js?v=21"></script>
 </body>
 </html>
