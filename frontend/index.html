@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=13">
 </head>
 <body>
 
@@ -106,6 +106,25 @@
   </div>
 </header>
 
+<section class="ops-strip" aria-live="polite">
+  <div class="ops-chip">
+    <span class="ops-label">MODE</span>
+    <span id="ops-mode" class="ops-value">REMOTE</span>
+  </div>
+  <div class="ops-chip">
+    <span class="ops-label">WO</span>
+    <span id="ops-wo" class="ops-value">—</span>
+  </div>
+  <div class="ops-chip ops-chip-wide">
+    <span class="ops-label">LOG DIR</span>
+    <span id="ops-logdir" class="ops-value">—</span>
+  </div>
+  <div class="ops-chip">
+    <span class="ops-label">DB</span>
+    <span id="ops-db" class="ops-value">CHECKING</span>
+  </div>
+</section>
+
 <!-- KPI bar -->
 <section class="kpi-bar">
   <div class="kpi-card kpi-primary kpi-total">
@@ -175,7 +194,7 @@
   <div class="panel records-panel">
     <div class="panel-title">
       <span>RECENT TESTS</span>
-      <span class="panel-title-meta">LATEST 120</span>
+      <span id="records-count-meta" class="panel-title-meta">0 / 0</span>
     </div>
     <div class="records-filters">
       <select id="filter-station" class="filter-input" aria-label="Filter by station">
@@ -223,6 +242,8 @@
   <span class="logdir-bar-label">📂 LOG DIR</span>
   <input type="text" id="logdir-input" placeholder="C:\path\to\rawlogs" title="Log directory path">
   <button id="logdir-browse" title="Browse directories" aria-label="Browse log directories">📁</button>
+  <button id="logdir-wo-root" class="hf-btn" title="Switch to WO root directory">WO Root</button>
+  <button id="logdir-rawlogs" class="hf-btn" title="Switch to default rawlogs directory">Rawlogs</button>
   <button id="btn-save-logdir" class="hf-btn hf-btn-save" title="Save log directory">💾</button>
   <button id="btn-clear-logdir" class="hf-btn hf-btn-clear" title="Clear saved log directory">✕</button>
   <button id="btn-log-sweep" class="logdir-sweep-btn" title="Delete all .txt files in this directory">🧹 Sweep</button>
@@ -248,6 +269,6 @@
   </div>
 </div>
 
-<script src="/static/dashboard.js?v=15"></script>
+<script src="/static/dashboard.js?v=16"></script>
 </body>
 </html>

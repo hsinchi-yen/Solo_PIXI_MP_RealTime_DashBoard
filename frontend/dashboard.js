@@ -62,6 +62,13 @@ const confirmMsg    = $('confirm-message');
 const filterStation = $('filter-station');
 const filterResult  = $('filter-result');
 const filterKeyword = $('filter-keyword');
+const recordsCountMeta = $('records-count-meta');
+const opsMode = $('ops-mode');
+const opsWo = $('ops-wo');
+const opsLogdir = $('ops-logdir');
+const opsDb = $('ops-db');
+const logdirWoRoot = $('logdir-wo-root');
+const logdirRawlogs = $('logdir-rawlogs');
 
 // DB Upload UI Elements
 const btnDbSettings = $('btn-db-settings');
@@ -93,8 +100,44 @@ let _confirmResolve = null;
 let CAN_MODIFY = false;
 let CAN_DB = false;
 const WO_CUSTOM_KEY = '__custom__';
+const DEFAULT_WO_ROOT = '/run/media/nvme0n1p1';
+const DEFAULT_LOG_DIR = '/run/media/nvme0n1p1/rawlogs';
 let WO_MIN_LEN = 13;
 let WO_MAX_LEN = 16;
+
+function _shortPath(path, keep = 42) {
+  const text = String(path || '').trim();
+  if (!text) return '—';
+  if (text.length <= keep) return text;
+  return '...' + text.slice(-keep);
+}
+
+function _refreshOpsStrip() {
+  if (opsMode) {
+    opsMode.textContent = CAN_MODIFY ? 'LOCAL' : 'REMOTE';
+    opsMode.className = `ops-value ${CAN_MODIFY ? 'ok' : 'warn'}`;
+  }
+  if (opsWo) {
+    const wo = _getWoValue();
+    opsWo.textContent = wo || '—';
+    opsWo.className = `ops-value ${wo ? 'ok' : ''}`;
+  }
+  if (opsLogdir) {
+    opsLogdir.textContent = _shortPath(logdirInput?.value || DEFAULT_LOG_DIR);
+  }
+  if (opsDb) {
+    if (!CAN_DB) {
+      opsDb.textContent = 'LOCKED';
+      opsDb.className = 'ops-value warn';
+    } else if (dbConnectionValid) {
+      opsDb.textContent = 'READY';
+      opsDb.className = 'ops-value ok';
+    } else {
+      opsDb.textContent = 'OFFLINE';
+      opsDb.className = 'ops-value bad';
+    }
+  }
+}
 
 function _normalizeWoCandidate(raw) {
   let text = String(raw ?? '').trim();
@@ -215,6 +258,8 @@ function _setModifyControlsEnabled(enabled) {
     btnSaveLogdir,
     btnClearLogdir,
     logSweepBtn,
+    logdirWoRoot,
+    logdirRawlogs,
   ];
 
   controls.forEach(el => {
@@ -230,6 +275,7 @@ function _setModifyControlsEnabled(enabled) {
     if (browseModal) browseModal.classList.add('hidden');
     _setWoCustomMode(inputWo?.value === WO_CUSTOM_KEY);
   }
+  _refreshOpsStrip();
 }
 
 async function _loadAccessPolicy() {
@@ -251,6 +297,7 @@ async function _loadAccessPolicy() {
   } catch (_) {}
   _setModifyControlsEnabled(CAN_MODIFY);
   _setDbSettingsEnabled(CAN_DB);
+  _refreshOpsStrip();
 }
 
 function _setDbSettingsEnabled(enabled) {
@@ -258,6 +305,7 @@ function _setDbSettingsEnabled(enabled) {
     btnDbSettings.disabled = !enabled;
     btnDbSettings.title = enabled ? 'DB Settings' : 'DB Settings (LAN access only)';
   }
+  _refreshOpsStrip();
 }
 
 function notify(message, type = 'info') {
@@ -334,9 +382,13 @@ function _passesFilter(rec) {
 
 function renderRecordsFromCache() {
   recordsTbody.innerHTML = '';
-  recordsCache.filter(_passesFilter).slice(0, MAX_ROWS).forEach(rec => {
+  const filtered = recordsCache.filter(_passesFilter);
+  filtered.slice(0, MAX_ROWS).forEach(rec => {
     recordsTbody.appendChild(buildRow(rec));
   });
+  if (recordsCountMeta) {
+    recordsCountMeta.textContent = `${Math.min(filtered.length, MAX_ROWS)} / ${filtered.length}`;
+  }
 }
 
 // ── Clock + Date ─────────────────────────────────────────────────────────────
@@ -409,6 +461,7 @@ async function _saveSettingsWithFeedback() {
     _lockInputs();
     _btnFeedback($('btn-save-settings'), '✓ Saved!');
     _btnFeedback($('btn-save-logdir'),   '✓');
+    _refreshOpsStrip();
   } else {
     _btnFeedback($('btn-save-settings'), '✗ Failed');
   }
@@ -424,8 +477,10 @@ async function _clearSettings() {
   
   _setWoValue('');
   inputTarget.value = '100';
+  logdirInput.value = DEFAULT_LOG_DIR;
   _unlockInputs();
   updateCompletion();
+  _refreshOpsStrip();
   _btnFeedback($('btn-clear-settings'), '✓ Cleared!');
 }
 
@@ -437,8 +492,9 @@ async function _restoreSettings() {
     const s = await response.json();
     _setWoValue(s.wo || '');
     if (s.qty)     { inputTarget.value = s.qty; }
-    if (s.log_dir) { logdirInput.value = s.log_dir; }
+    logdirInput.value = s.log_dir || DEFAULT_LOG_DIR;
     if (s.wo || s.qty) { _lockInputs(); }
+    _refreshOpsStrip();
   } catch (e) {
     console.error('Failed to restore settings:', e);
   }
@@ -520,7 +576,11 @@ if (filterKeyword) {
 if (inputWo) {
   inputWo.addEventListener('change', () => {
     _setWoCustomMode(inputWo.value === WO_CUSTOM_KEY);
+    _refreshOpsStrip();
   });
+}
+if (inputWoCustom) {
+  inputWoCustom.addEventListener('input', _refreshOpsStrip);
 }
 
 if (btnWoRefresh) {
@@ -548,6 +608,9 @@ function updateCompletion() {
   if (kpiCompTrend) kpiCompTrend.innerHTML = _trendArrow('completion', _lastCompletionPct);
 }
 inputTarget.addEventListener('input', updateCompletion);
+if (logdirInput) {
+  logdirInput.addEventListener('input', _refreshOpsStrip);
+}
 
 // ── KPI trend tracking ────────────────────────────────────────────────────────
 const _trendHistory = [];
@@ -735,6 +798,10 @@ function prependRecord(rec) {
   while (recordsTbody.rows.length > MAX_ROWS) {
     recordsTbody.deleteRow(recordsTbody.rows.length - 1);
   }
+  if (recordsCountMeta) {
+    const filtered = recordsCache.filter(_passesFilter).length;
+    recordsCountMeta.textContent = `${Math.min(filtered, MAX_ROWS)} / ${filtered}`;
+  }
 }
 
 // ── Progress ──────────────────────────────────────────────────────────────────
@@ -763,7 +830,8 @@ function renderSnapshot(snap) {
   _refreshStationFilterOptions();
   renderRecordsFromCache();
 
-  if (snap.log_dir !== undefined) logdirInput.value = snap.log_dir;
+  if (snap.log_dir !== undefined) logdirInput.value = snap.log_dir || DEFAULT_LOG_DIR;
+  _refreshOpsStrip();
 }
 
 function clearDashboard() {
@@ -775,6 +843,7 @@ function clearDashboard() {
   recordsTbody.innerHTML = '';
   hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
   distChart.innerHTML = '<div class="dist-empty">No data</div>';
+  if (recordsCountMeta) recordsCountMeta.textContent = '0 / 0';
 }
 
 // ── Browse modal ──────────────────────────────────────────────────────────────
@@ -890,6 +959,7 @@ async function applyLogDir(dir) {
     } else {
       await _saveSettings();
       notify('Log directory applied', 'success');
+      _refreshOpsStrip();
     }
   } catch (e) {
     notify('Failed to apply log directory: ' + e.message, 'error');
@@ -901,6 +971,21 @@ async function applyLogDir(dir) {
 logdirInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') applyLogDir(logdirInput.value.trim());
 });
+
+if (logdirWoRoot) {
+  logdirWoRoot.addEventListener('click', () => {
+    if (!CAN_MODIFY) return;
+    logdirInput.value = DEFAULT_WO_ROOT;
+    applyLogDir(DEFAULT_WO_ROOT);
+  });
+}
+if (logdirRawlogs) {
+  logdirRawlogs.addEventListener('click', () => {
+    if (!CAN_MODIFY) return;
+    logdirInput.value = DEFAULT_LOG_DIR;
+    applyLogDir(DEFAULT_LOG_DIR);
+  });
+}
 
 // ── Log Sweep ─────────────────────────────────────────────────────────────────
 if (logSweepBtn) {
@@ -1024,6 +1109,7 @@ function setDbConnectionStatus(valid) {
   } else if (!uploadStatusText.textContent.includes('stats:')) {
     uploadStatusText.textContent = 'Ready';
   }
+  _refreshOpsStrip();
 }
 
 function openDbModal() {
@@ -1153,8 +1239,9 @@ async function init() {
 
   try {
     const cfg = await fetch('/api/config').then(r => r.json());
-    logdirInput.value = cfg.log_dir || '';
+    logdirInput.value = cfg.log_dir || DEFAULT_LOG_DIR;
   } catch (_) {}
+  _refreshOpsStrip();
 
   // Run initial DB check in background — do not block page load
   testDbConnection(false);

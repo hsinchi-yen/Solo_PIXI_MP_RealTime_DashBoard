@@ -70,6 +70,56 @@ header {
   flex-shrink: 0;
 }
 
+.ops-strip {
+  height: 34px;
+  background: #0b0b14;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.ops-chip {
+  min-width: 132px;
+  max-width: 260px;
+  background: #151524;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ops-chip-wide {
+  flex: 1;
+  max-width: none;
+}
+.ops-label {
+  font-size: 10px;
+  letter-spacing: .12em;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.ops-value {
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ops-value.ok {
+  color: var(--pass);
+}
+.ops-value.warn {
+  color: var(--stop);
+}
+.ops-value.bad {
+  color: var(--fail);
+}
+
 /* vertical separator between header blocks */
 .header-sep {
   width: 1px;
@@ -335,6 +385,11 @@ header {
   opacity: 0.65;
 }
 #logdir-browse { padding: 3px 8px; font-size: 16px; }
+#logdir-wo-root,
+#logdir-rawlogs {
+  padding: 3px 8px;
+  font-size: 11px;
+}
 .logdir-sweep-btn {
   background: #1e1e30;
   border: 1px solid var(--stop);
@@ -516,6 +571,7 @@ select:focus-visible,
   font-size: 10px;
   letter-spacing: .08em;
   color: #8a8aa5;
+  font-weight: 700;
 }
 .records-filters {
   display: flex;
@@ -895,6 +951,8 @@ body.light-mode {
 }
 body.light-mode header           { background: #e8eaf0; border-bottom-color: #c0c4d8; }
 body.light-mode .header-sep      { background: #c0c4d8; }
+body.light-mode .ops-strip       { background: #e4e6f2; border-bottom-color: #c0c4d8; }
+body.light-mode .ops-chip        { background: #f9faff; border-color: #cfd4e5; }
 body.light-mode .hf-input        { background: #fff; color: #111827; }
 body.light-mode .hf-sep          { background: #c0c4d8; }
 body.light-mode .hf-btn          { background: #d8dae8; color: #111827; border-color: #c0c4d8; }
@@ -949,6 +1007,10 @@ body.light-mode .toast { background: #fff; }
   header {
     height: 54px;
   }
+  .ops-strip        { height: 30px; padding: 0 14px; gap: 6px; }
+  .ops-chip         { min-width: 106px; padding: 2px 8px; }
+  .ops-label        { font-size: 9px; }
+  .ops-value        { font-size: 10px; }
   .hf-input         { font-size: 14px; padding: 4px 10px; width: 148px; }
   .hf-input-qty     { width: 72px; }
   #clock            { font-size: 20px; }
