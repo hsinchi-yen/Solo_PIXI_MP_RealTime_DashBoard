@@ -61,13 +61,11 @@ async def async_test_connection(dsn: str | None = None) -> None:
 # ── Parser loader ─────────────────────────────────────────────────────────────
 
 def load_parser_module():
-    parser_path = (
-        BASE_DIR / "Reference_app" / "solo-pixi-essential" / "module_log_parser.py"
-    )
+    parser_path = Path(__file__).parent / "module_log_parser.py"
     if not parser_path.exists():
         raise ImportError(
             f"Cannot find {parser_path}. "
-            "Please ensure solo-pixi-essential is placed correctly."
+            "Place module_log_parser.py in the app/ directory."
         )
     spec = importlib.util.spec_from_file_location(
         "solo_pixi_module_log_parser", str(parser_path)
