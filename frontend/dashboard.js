@@ -51,7 +51,6 @@ const browseClose   = $('browse-close');
 const btnSaveSettings = $('btn-save-settings');
 const btnClearSettings = $('btn-clear-settings');
 const btnSaveLogdir = $('btn-save-logdir');
-const btnClearLogdir = $('btn-clear-logdir');
 const logSweepBtn = $('btn-log-sweep');
 const toastRegion   = $('toast-region');
 const confirmModal  = $('confirm-modal');
@@ -313,7 +312,6 @@ function _setModifyControlsEnabled(enabled) {
     browseCancel,
     browseClose,
     btnSaveLogdir,
-    btnClearLogdir,
     logSweepBtn,
     logdirWoRoot,
     logdirRawlogs,
@@ -553,7 +551,6 @@ async function _saveSettingsWithFeedback() {
   if (success) {
     _lockInputs();
     _btnFeedback($('btn-save-settings'), '✓ Saved!');
-    _btnFeedback($('btn-save-logdir'),   '✓');
     _refreshOpsStrip();
     _refreshPathHealth();
   } else {
@@ -608,10 +605,8 @@ $('btn-save-settings').addEventListener('click', _saveSettingsWithFeedback);
 $('btn-clear-settings').addEventListener('click', _clearSettings);
 if (btnEditSettings) btnEditSettings.addEventListener('click', _editSettings);
 
-const _btnSaveLogdir  = $('btn-save-logdir');
-const _btnClearLogdir = $('btn-clear-logdir');
-if (_btnSaveLogdir)  _btnSaveLogdir.addEventListener('click',  _saveSettingsWithFeedback);
-if (_btnClearLogdir) _btnClearLogdir.addEventListener('click', _clearSettings);
+const _btnApplyLogdir = $('btn-save-logdir');
+if (_btnApplyLogdir) _btnApplyLogdir.addEventListener('click', () => applyLogDir(logdirInput.value.trim()));
 
 if (confirmClose) confirmClose.addEventListener('click', () => _closeConfirm(false));
 if (confirmCancel) confirmCancel.addEventListener('click', () => _closeConfirm(false));
