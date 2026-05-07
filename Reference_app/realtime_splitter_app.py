@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import json
 from datetime import datetime
 import paramiko
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
@@ -239,6 +240,36 @@ QTextEdit {
     padding: 2px 4px;
     selection-background-color: #0078D4;
     color: #1A1A1A;
+}
+
+/* ── Lock & Config Action Buttons ── */
+QPushButton#lockBtn {
+    background-color: transparent;
+    color: #ABABAB;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+}
+QPushButton#lockBtn:hover { background-color: #3A3A3A; color: #FFFFFF; }
+
+QPushButton#configBtn {
+    background-color: #F9F9F9;
+    color: #1A1A1A;
+    border: 1px solid #D1D1D1;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-weight: 600;
+}
+QPushButton#configBtn:hover { background-color: #F0F0F0; border-color: #ADADAD; }
+QPushButton#configBtn:pressed { background-color: #E8E8E8; }
+
+QLabel#miniStats {
+    color: #6CCB5F;
+    font-size: 11px;
+    font-weight: 700;
+    padding-left: 8px;
 }
 """
 
@@ -859,6 +890,7 @@ class RealtimeSplitterApp(QMainWindow):
         self._seen_files     = set()
         self._session_written = 0
         self._session_synced  = 0
+        self._is_locked       = True  # OP mode by default
         
         # SSH LED breathing animation
         self._ssh_led_timer = QTimer()
@@ -889,11 +921,12 @@ class RealtimeSplitterApp(QMainWindow):
         lay.setSpacing(4)
 
         lay.addWidget(self._mk_header())
-        self._config_frame      = self._mk_config()
+        self._op_frame, self._eng_frame = self._mk_config_panels()
         self._status_frame      = self._mk_status_strip()
         self._log_frame         = self._mk_log()
         self._upload_log_frame  = self._mk_upload_log()
-        lay.addWidget(self._config_frame)
+        lay.addWidget(self._op_frame)
+        lay.addWidget(self._eng_frame)
         lay.addWidget(self._status_frame)
         lay.addWidget(self._log_frame, stretch=1)
         lay.addWidget(self._upload_log_frame)
@@ -984,19 +1017,7 @@ class RealtimeSplitterApp(QMainWindow):
         h.addWidget(self.btn_expand)
         return frame
 
-    def _mk_config(self):
-        frame = QFrame()
-        frame.setObjectName("configPanel")
-        grid = QHBoxLayout()          # outer wrapper to get the border margins right
-        grid.setContentsMargins(0, 0, 0, 0)
-        frame.setLayout(grid)
-
-        inner = QWidget()
-        grid.addWidget(inner)
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(8)
-
+    def _mk_config_panels(self):
         def browse_btn(slot, icon_key=QStyle.SP_DirOpenIcon):
             b = QPushButton()
             b.setObjectName("browse")
@@ -1021,23 +1042,19 @@ class RealtimeSplitterApp(QMainWindow):
                 h.addSpacing(29)  # align with rows that have browse buttons
             return h
 
-        # Row 0 — source file
-        self.file_input = QLineEdit()
-        self.file_input.setPlaceholderText("Log_ALL.txt …")
-        self.file_input.setReadOnly(True)
-        self.file_input.setFixedHeight(24)
-        self._btn_src = browse_btn(self.browse_source, QStyle.SP_DialogOpenButton)
-        lay.addLayout(row("SRC", self.file_input, self._btn_src))
+        # --- OP Panel ---
+        op_frame = QFrame()
+        op_frame.setObjectName("configPanel")
+        grid_op = QHBoxLayout()
+        grid_op.setContentsMargins(0, 0, 0, 0)
+        op_frame.setLayout(grid_op)
+        inner_op = QWidget()
+        grid_op.addWidget(inner_op)
+        lay_op = QVBoxLayout(inner_op)
+        lay_op.setContentsMargins(8, 8, 8, 8)
+        lay_op.setSpacing(8)
 
-        # Row 1 — output folder
-        self.dir_output_input = QLineEdit()
-        self.dir_output_input.setText(
-            os.path.join(os.path.expanduser('~'), 'Documents', 'Log_Output'))
-        self.dir_output_input.setFixedHeight(24)
-        self._btn_out = browse_btn(self.browse_output)
-        lay.addLayout(row("OUT", self.dir_output_input, self._btn_out))
-
-        # Row 1.2 — Work Order number
+        # Work Order number
         self.wo_input = QLineEdit()
         self.wo_input.setPlaceholderText("Work Order …  e.g. 5101-260129012")
         self.wo_input.setFixedHeight(24)
@@ -1047,33 +1064,55 @@ class RealtimeSplitterApp(QMainWindow):
             "Also uploads to same level as rawlogs on remote"
         )
         self.wo_input.setClearButtonEnabled(True)
-        lay.addLayout(row("WOU", self.wo_input))
+        lay_op.addLayout(row("WOU", self.wo_input))
 
-        # Row 1.5 — STATION dropdown + save button
+        # STATION dropdown
         self.station_combo = QComboBox()
         self.station_combo.addItems(STATION_OPTIONS)
         self.station_combo.setFixedHeight(24)
         self.station_combo.setToolTip("Select test station ID")
         self.station_combo.currentIndexChanged.connect(self._update_station_display)
         
-        self.btn_save_station = QPushButton("💾")
-        self.btn_save_station.setObjectName("browse")
-        self.btn_save_station.setFixedSize(24, 24)
-        self.btn_save_station.setToolTip("Save all settings (SRC/OUT/STA/DST/SSH)")
-        self.btn_save_station.clicked.connect(self._save_all_settings)
-        
-        h1_5 = QHBoxLayout()
-        h1_5.setContentsMargins(0, 0, 0, 0)
-        h1_5.setSpacing(5)
+        h_sta = QHBoxLayout()
+        h_sta.setContentsMargins(0, 0, 0, 0)
+        h_sta.setSpacing(5)
         lbl_sta = QLabel("STA")
         lbl_sta.setObjectName("rowTag")
         lbl_sta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        h1_5.addWidget(lbl_sta)
-        h1_5.addWidget(self.station_combo, stretch=1)
-        h1_5.addWidget(self.btn_save_station)
-        lay.addLayout(h1_5)
+        h_sta.addWidget(lbl_sta)
+        h_sta.addWidget(self.station_combo, stretch=1)
+        lay_op.addLayout(h_sta)
 
-        # Row 2 — dest folder (rsync) + poll interval (inline)
+        # --- Engineer Panel ---
+        eng_frame = QFrame()
+        eng_frame.setObjectName("configPanel")
+        grid_eng = QHBoxLayout()
+        grid_eng.setContentsMargins(0, 0, 0, 0)
+        eng_frame.setLayout(grid_eng)
+        inner_eng = QWidget()
+        grid_eng.addWidget(inner_eng)
+        lay_eng = QVBoxLayout(inner_eng)
+        lay_eng.setContentsMargins(8, 8, 8, 8)
+        lay_eng.setSpacing(8)
+        eng_frame.setVisible(False) # Hidden by default (Locked OP mode)
+
+        # SRC
+        self.file_input = QLineEdit()
+        self.file_input.setPlaceholderText("Log_ALL.txt …")
+        self.file_input.setReadOnly(True)
+        self.file_input.setFixedHeight(24)
+        self._btn_src = browse_btn(self.browse_source, QStyle.SP_DialogOpenButton)
+        lay_eng.addLayout(row("SRC", self.file_input, self._btn_src))
+
+        # OUT
+        self.dir_output_input = QLineEdit()
+        self.dir_output_input.setText(
+            os.path.join(os.path.expanduser('~'), 'Documents', 'Log_Output'))
+        self.dir_output_input.setFixedHeight(24)
+        self._btn_out = browse_btn(self.browse_output)
+        lay_eng.addLayout(row("OUT", self.dir_output_input, self._btn_out))
+
+        # DST and Interval
         self.dir_dest_input = QLineEdit()
         self.dir_dest_input.setText(DEFAULT_RSYNC_PATH)
         self.dir_dest_input.setPlaceholderText("rsync destination …")
@@ -1097,7 +1136,6 @@ class RealtimeSplitterApp(QMainWindow):
         h2.addWidget(self.dir_dest_input, stretch=1)
         h2.addWidget(self._btn_dst)
         
-        # SSH Test button + LED indicator
         self.btn_ssh_test = QPushButton("Test")
         self.btn_ssh_test.setObjectName("sshTest")
         self.btn_ssh_test.setFixedHeight(24)
@@ -1112,28 +1150,55 @@ class RealtimeSplitterApp(QMainWindow):
         h2.addWidget(self._ssh_led)
         h2.addSpacing(4)
         h2.addWidget(self.spin_interval)
-        lay.addLayout(h2)
+        lay_eng.addLayout(h2)
+
+        # Config Management Row
+        h_cfg = QHBoxLayout()
+        h_cfg.setContentsMargins(0, 4, 0, 0)
+        h_cfg.setSpacing(8)
+        h_cfg.addStretch(1)
         
+<<<<<<< HEAD
         # DST hint label
         hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
         hint.setObjectName("statusKey")
         hint.setStyleSheet("color: #5D5D5D; font-size: 9px; padding-left: 33px;")
         lay.addWidget(hint)
+=======
+        self.btn_export = QPushButton("匯出設定")
+        self.btn_export.setObjectName("configBtn")
+        self.btn_export.clicked.connect(self._export_config)
+        
+        self.btn_import = QPushButton("匯入設定")
+        self.btn_import.setObjectName("configBtn")
+        self.btn_import.clicked.connect(self._import_config)
+
+        self.btn_save_station = QPushButton("儲存設定")
+        self.btn_save_station.setObjectName("configBtn")
+        self.btn_save_station.setToolTip("Save all settings (SRC/OUT/STA/DST/SSH)")
+        self.btn_save_station.clicked.connect(self._save_all_settings)
+        
+        h_cfg.addWidget(self.btn_import)
+        h_cfg.addWidget(self.btn_export)
+        h_cfg.addWidget(self.btn_save_station)
+        lay_eng.addLayout(h_cfg)
+>>>>>>> dcb3e74 (feat(ui): implement dual mode (OP/Eng), mini-bar stats, and config management)
 
         self._config_widgets = [
             self.file_input, self._btn_src,
             self.dir_output_input, self._btn_out,
             self.wo_input,
-            self.station_combo, self.btn_save_station,
+            self.station_combo,
+            self.btn_import, self.btn_export, self.btn_save_station,
             self.dir_dest_input, self._btn_dst,
             self.spin_interval,
+            self.btn_ssh_test
         ]
         
         # Restore all saved settings
         self._restore_all_settings()
-        self._update_station_display()  # sync header with restored/default station
-        return frame
-
+        self._update_station_display()
+        return op_frame, eng_frame
     def _mk_status_strip(self):
         frame = QFrame()
         frame.setObjectName("statusStrip")
@@ -1351,11 +1416,14 @@ class RealtimeSplitterApp(QMainWindow):
 
     def _collapse_ui(self):
         self._pre_collapse_height = self.height()
-        for f in (self._config_frame, self._status_frame,
+        for f in (self._op_frame, self._eng_frame, self._status_frame,
                   self._log_frame, self._upload_log_frame):
             f.hide()
         self.btn_collapse.setVisible(False)
         self.btn_expand.setVisible(True)
+        self._lbl_mini_stats.setVisible(True)
+        self._update_mini_stats()
+        
         # Unlock min/max so the window can shrink, then lock after layout recalc
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
@@ -1371,11 +1439,17 @@ class RealtimeSplitterApp(QMainWindow):
         # Unlock constraints before showing widgets
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
-        for f in (self._config_frame, self._status_frame,
-                  self._log_frame, self._upload_log_frame):
-            f.show()
+        self._op_frame.setVisible(True)
+        if not getattr(self, '_is_locked', False):
+            self._eng_frame.setVisible(True)
+        self._status_frame.setVisible(True)
+        self._log_frame.setVisible(True)
+        self._upload_log_frame.setVisible(True)
+        
         self.btn_expand.setVisible(False)
         self.btn_collapse.setVisible(True)
+        self._lbl_mini_stats.setVisible(False)
+        
         # Restore original min/max and pre-collapse height
         self.setMinimumHeight(297)
         self.setMaximumHeight(800)
@@ -1387,6 +1461,48 @@ class RealtimeSplitterApp(QMainWindow):
         sid = self.station_combo.currentText()
         self._station_id_lbl.setText(f"STATION ID : {sid}")
         self.setWindowTitle(f"Log Splitter — Live  |  STATION ID : {sid}")
+
+    def _toggle_lock(self):
+        self._is_locked = not self._is_locked
+        if self._is_locked:
+            self.btn_lock.setText("🔒 OP")
+            self._eng_frame.setVisible(False)
+        else:
+            self.btn_lock.setText("🔓 ENG")
+            self._eng_frame.setVisible(True)
+
+    def _export_config(self):
+        p, _ = QFileDialog.getSaveFileName(self, "匯出設定檔", "config.json", "JSON Files (*.json)")
+        if p:
+            config_data = {
+                "src_path": self.file_input.text(),
+                "out_path": self.dir_output_input.text(),
+                "dst_path": self.dir_dest_input.text(),
+                "interval": self.spin_interval.value()
+            }
+            try:
+                import json
+                with open(p, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=4)
+                self._log(f"設定檔已匯出至: {p}")
+            except Exception as e:
+                self._log(f"匯出設定檔失敗: {e}")
+
+    def _import_config(self):
+        p, _ = QFileDialog.getOpenFileName(self, "匯入設定檔", "", "JSON Files (*.json)")
+        if p:
+            try:
+                import json
+                with open(p, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                if "src_path" in config_data: self.file_input.setText(config_data["src_path"])
+                if "out_path" in config_data: self.dir_output_input.setText(config_data["out_path"])
+                if "dst_path" in config_data: self.dir_dest_input.setText(config_data["dst_path"])
+                if "interval" in config_data: self.spin_interval.setValue(config_data["interval"])
+                self._log(f"設定檔已匯入從: {p}")
+            except Exception as e:
+                self._log(f"匯入設定檔失敗: {e}")
+
 
     # ── Auto SSH test on startup ──────────────────────────────
 
@@ -1625,6 +1741,10 @@ class RealtimeSplitterApp(QMainWindow):
         ts = datetime.now().strftime("%H:%M:%S")
         self.activity_log.append(f"[{ts}]  {msg}")
 
+    def _update_mini_stats(self):
+        if hasattr(self, '_lbl_mini_stats'):
+            self._lbl_mini_stats.setText(f"| 分割: {self._session_written} | 上傳: {self._session_synced}")
+
     def _launch_split(self):
         self._set_dot("busy")
         self._pending_split = False
@@ -1685,6 +1805,7 @@ class RealtimeSplitterApp(QMainWindow):
         if self._upload_thread:  # DST path — count as synced
             self._session_synced += 1
             self._lbl_synced.setText(str(self._session_synced))
+            self._update_mini_stats()
 
     def _on_upload_failed(self, filename, error):
         self._log(f"ERR  Upload {filename}: {error}")
@@ -1711,6 +1832,7 @@ class RealtimeSplitterApp(QMainWindow):
             self._session_written += 1
             self._log(f"  ↑  {name}")
         self._lbl_written.setText(str(self._session_written))
+        self._update_mini_stats()
         if self._watcher_thread and self._watcher_thread.isRunning():
             self._set_dot("watching")
         q_depth = self._upload_queue.qsize() if self._upload_queue else 0
