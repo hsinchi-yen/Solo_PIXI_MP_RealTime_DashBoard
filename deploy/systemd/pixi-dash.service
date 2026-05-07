@@ -1,0 +1,18 @@
+[Unit]
+Description=PIXI Dashboard Container
+Requires=docker.service
+After=docker.service network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+TimeoutStopSec=30
+# Ensure NVMe mount root exists before starting container.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 90); do [ -d /run/media/nvme0n1p1 ] && exit 0; sleep 1; done; echo "nvme mount not ready: /run/media/nvme0n1p1"; exit 1'
+ExecStart=/usr/bin/docker start pixi-dash
+ExecStop=/usr/bin/docker stop -t 20 pixi-dash
+
+[Install]
+WantedBy=multi-user.target
