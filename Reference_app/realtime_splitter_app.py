@@ -939,18 +939,46 @@ class RealtimeSplitterApp(QMainWindow):
         h.setContentsMargins(10, 0, 8, 0)
         h.setSpacing(6)
 
+        # ── TN Logo badge (far left of header) ──
+        self.tn_badge = QLabel()
+        self.tn_badge.setAlignment(Qt.AlignCenter)
+        self.tn_badge.setFixedSize(30, 26)
+        _logo_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tn_log.png')
+        if getattr(sys, 'frozen', False):
+            _logo_file = os.path.join(os.path.dirname(sys.executable), 'tn_log.png')
+        if os.path.exists(_logo_file):
+            from PyQt5.QtGui import QPixmap
+            _pm = QPixmap(_logo_file).scaled(30, 26, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.tn_badge.setPixmap(_pm)
+            self.tn_badge.setStyleSheet("background: transparent; border: none;")
+        else:
+            self.tn_badge.setText("TN")
+            self.tn_badge.setStyleSheet(
+                "background-color: #0078D4; color: #FFFFFF; font-weight: 800;"
+                " border-radius: 4px; font-size: 12px; font-family: Arial;"
+            )
+
         self._dot = QLabel("●")
         self._dot.setObjectName("dotIdle")
         self._dot_state = QLabel("Idle")
         self._dot_state.setObjectName("dotState")
 
-        title = QLabel("Log Splitter  ·  Live")
+        title = QLabel("Log Splitter")
         title.setObjectName("appTitle")
+
+        self.btn_lock = QPushButton("🔒 簡易功能 (OP)")
+        self.btn_lock.setObjectName("lockBtn")
+        self.btn_lock.setToolTip("切換 簡易/進階功能")
+        self.btn_lock.clicked.connect(self._toggle_lock)
 
         self._station_id_lbl = QLabel("")
         self._station_id_lbl.setStyleSheet(
             "color: #FCB040; font-size: 11px; font-weight: 600; padding-left: 8px;"
         )
+
+        self._lbl_mini_stats = QLabel("")
+        self._lbl_mini_stats.setObjectName("miniStats")
+        self._lbl_mini_stats.setVisible(False)
 
         self.btn_start = QPushButton("▶  Start")
         self.btn_start.setObjectName("start")
@@ -982,25 +1010,7 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_expand.setVisible(False)
         self.btn_expand.clicked.connect(self._expand_ui)
 
-        # ── TN Logo badge (far left of header) ──
-        self.tn_badge = QLabel()
-        self.tn_badge.setAlignment(Qt.AlignCenter)
-        self.tn_badge.setFixedSize(30, 26)
-        _logo_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tn_log.png')
-        if getattr(sys, 'frozen', False):
-            _logo_file = os.path.join(os.path.dirname(sys.executable), 'tn_log.png')
-        if os.path.exists(_logo_file):
-            from PyQt5.QtGui import QPixmap
-            _pm = QPixmap(_logo_file).scaled(30, 26, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.tn_badge.setPixmap(_pm)
-            self.tn_badge.setStyleSheet("background: transparent; border: none;")
-        else:
-            self.tn_badge.setText("TN")
-            self.tn_badge.setStyleSheet(
-                "background-color: #0078D4; color: #FFFFFF; font-weight: 800;"
-                " border-radius: 4px; font-size: 12px; font-family: Arial;"
-            )
-
+        # Build Layout Sequence
         h.addWidget(self.tn_badge)
         h.addSpacing(4)
         h.addWidget(self._dot)
@@ -1008,7 +1018,10 @@ class RealtimeSplitterApp(QMainWindow):
         h.addSpacing(4)
         h.addWidget(title)
         h.addWidget(self._station_id_lbl)
+        h.addWidget(self._lbl_mini_stats)
         h.addStretch(1)
+        h.addWidget(self.btn_lock)
+        h.addSpacing(6)
         h.addWidget(self.btn_start)
         h.addWidget(self.btn_stop)
         h.addWidget(self.btn_upload_stop)
@@ -1463,10 +1476,10 @@ class RealtimeSplitterApp(QMainWindow):
     def _toggle_lock(self):
         self._is_locked = not self._is_locked
         if self._is_locked:
-            self.btn_lock.setText("🔒 OP")
+            self.btn_lock.setText("🔒 簡易功能 (OP)")
             self._eng_frame.setVisible(False)
         else:
-            self.btn_lock.setText("🔓 ENG")
+            self.btn_lock.setText("🔓 進階功能 (ENG)")
             self._eng_frame.setVisible(True)
 
     def _export_config(self):
