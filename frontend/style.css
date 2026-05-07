@@ -122,6 +122,19 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+}
+.mission-controls,
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.upload-controls {
+  margin-left: auto;
+}
+.hf-sep-wide {
+  margin-left: 20px;
 }
 .hf-label {
   font-size: 11px;
@@ -195,6 +208,12 @@ header {
 .hf-btn-clear:hover    { border-color: var(--fail); color: var(--fail); }
 .hf-btn-refresh:hover  { border-color: var(--info); color: var(--info); }
 .hf-btn.btn-feedback   { color: var(--pass); border-color: var(--pass); }
+.upload-status-text {
+  font-size: 11px;
+  margin-left: 10px;
+  color: #888;
+  min-width: 120px;
+}
 
 /* Block 3: Clock + Date */
 .header-clock {
@@ -349,6 +368,14 @@ header {
   flex-shrink: 0;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.browse-item:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
+}
+
 /* ── KPI BAR ─────────────────────────────────────────────────────── */
 .kpi-bar {
   display: flex;
@@ -490,6 +517,26 @@ header {
   letter-spacing: .08em;
   color: #8a8aa5;
 }
+.records-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.filter-input {
+  background: #111120;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.filter-keyword {
+  flex: 1;
+  min-width: 160px;
+}
 
 /* ── RECORDS TABLE ───────────────────────────────────────────────── */
 .records-table {
@@ -556,6 +603,16 @@ header {
 .badge-stop { color: var(--bg); background: var(--stop); }
 
 .fail-summary { color: #ff7070; font-size: 11px; font-family: sans-serif; }
+.fail-summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.record-row.expanded .fail-summary {
+  white-space: normal;
+  overflow: visible;
+}
 
 /* FAIL / STOP row left-border accent */
 .row-fail > td:first-child { border-left: 3px solid var(--fail); }
@@ -703,6 +760,39 @@ header {
 #browse-cancel { background: #1e1e2e; color: var(--text-dim); }
 #browse-cancel:hover { background: #2a2a3e; }
 
+.confirm-modal-box {
+  width: 420px;
+}
+.confirm-message {
+  padding: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-line;
+}
+
+.toast-region {
+  position: fixed;
+  right: 18px;
+  bottom: 54px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+.toast {
+  background: #1a1a28;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--info);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  box-shadow: 0 8px 18px rgba(0,0,0,.28);
+}
+.toast.ok { border-left-color: var(--pass); }
+.toast.err { border-left-color: var(--fail); }
+
 /* ── STATS PANEL ─────────────────────────────────────────────────── */
 .stats-panel { overflow-y: auto; }
 
@@ -831,6 +921,9 @@ body.light-mode .modal-box       { background: #fff; }
 body.light-mode .browse-item:hover { background: #eef0fa; }
 body.light-mode .modal-close     { color: #4b5563; }
 body.light-mode .app-title       { color: #111827; }
+body.light-mode .upload-status-text { color: #4b5563; }
+body.light-mode .filter-input { background: #fff; color: #111827; }
+body.light-mode .toast { background: #fff; }
 
 /* ── TREND ARROWS ────────────────────────────────────────────────────────── */
 .kpi-trend { font-size: 22px; vertical-align: middle; }
@@ -988,4 +1081,48 @@ body.light-mode .app-title       { color: #111827; }
   .date-badge       { font-size: 30px; }
 
   .logdir-bar       { height: 38px; }
+}
+
+@media (max-width: 1366px) {
+  .header-fields-row { gap: 8px; }
+  .hf-input { width: 150px; }
+  .hf-input-qty { width: 78px; }
+  .upload-status-text { min-width: 90px; }
+}
+
+@media (max-width: 1180px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .records-panel {
+    min-height: 340px;
+  }
+  .header-mission {
+    padding: 0 12px;
+  }
+  .header-fields-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .upload-controls {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .records-filters {
+    flex-wrap: wrap;
+  }
+  .filter-keyword {
+    min-width: 100%;
+  }
+  .logdir-bar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 12px;
+  }
+  .logdir-bar-sep {
+    display: none;
+  }
 }

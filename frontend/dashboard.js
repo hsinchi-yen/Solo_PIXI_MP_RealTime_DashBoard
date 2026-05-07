@@ -53,6 +53,15 @@ const btnClearSettings = $('btn-clear-settings');
 const btnSaveLogdir = $('btn-save-logdir');
 const btnClearLogdir = $('btn-clear-logdir');
 const logSweepBtn = $('btn-log-sweep');
+const toastRegion   = $('toast-region');
+const confirmModal  = $('confirm-modal');
+const confirmClose  = $('confirm-close');
+const confirmOk     = $('confirm-ok');
+const confirmCancel = $('confirm-cancel');
+const confirmMsg    = $('confirm-message');
+const filterStation = $('filter-station');
+const filterResult  = $('filter-result');
+const filterKeyword = $('filter-keyword');
 
 // DB Upload UI Elements
 const btnDbSettings = $('btn-db-settings');
@@ -73,6 +82,13 @@ const uploadStatusText = $('upload-status-text');
 
 let dbConnectionValid = false;
 let dbUploadCheckInterval = null;
+let recordsCache = [];
+let recordsFilter = {
+  station: '',
+  result: '',
+  keyword: '',
+};
+let _confirmResolve = null;
 
 let CAN_MODIFY = false;
 let CAN_DB = false;
@@ -244,6 +260,85 @@ function _setDbSettingsEnabled(enabled) {
   }
 }
 
+function notify(message, type = 'info') {
+  if (!toastRegion) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type === 'error' ? 'err' : (type === 'success' ? 'ok' : '')}`;
+  toast.textContent = message;
+  toastRegion.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+  }, 3200);
+}
+
+function _closeConfirm(result) {
+  if (!confirmModal) return;
+  confirmModal.classList.add('hidden');
+  if (_confirmResolve) {
+    _confirmResolve(result);
+    _confirmResolve = null;
+  }
+}
+
+function askConfirm(message, okText = 'Confirm') {
+  if (!confirmModal || !confirmMsg || !confirmOk) return Promise.resolve(false);
+  confirmMsg.textContent = message;
+  confirmOk.textContent = okText;
+  confirmModal.classList.remove('hidden');
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+  });
+}
+
+function _uniqueStationsFromRows(rows) {
+  const set = new Set();
+  rows.forEach(rec => {
+    const station = String(rec.station_id || '').trim();
+    if (station) set.add(station);
+  });
+  return Array.from(set).sort();
+}
+
+function _refreshStationFilterOptions() {
+  if (!filterStation) return;
+  const stations = _uniqueStationsFromRows(recordsCache);
+  const current = filterStation.value;
+  filterStation.innerHTML = '<option value="">All Stations</option>';
+  stations.forEach(st => {
+    const opt = document.createElement('option');
+    opt.value = st;
+    opt.textContent = st;
+    filterStation.appendChild(opt);
+  });
+  filterStation.value = stations.includes(current) ? current : '';
+}
+
+function _passesFilter(rec) {
+  const station = String(rec.station_id || '').trim();
+  if (recordsFilter.station && station !== recordsFilter.station) return false;
+  if (recordsFilter.result && String(rec.result || '') !== recordsFilter.result) return false;
+  if (recordsFilter.keyword) {
+    const kw = recordsFilter.keyword.toLowerCase();
+    const hay = [
+      rec.station_id,
+      rec.mac1,
+      rec.mac2,
+      rec.result,
+      rec.duration,
+      ...(rec.failed_items || []).map(i => `${i.step_name} ${i.measurement} ${i.value}${i.unit}`),
+    ].join(' ').toLowerCase();
+    if (!hay.includes(kw)) return false;
+  }
+  return true;
+}
+
+function renderRecordsFromCache() {
+  recordsTbody.innerHTML = '';
+  recordsCache.filter(_passesFilter).slice(0, MAX_ROWS).forEach(rec => {
+    recordsTbody.appendChild(buildRow(rec));
+  });
+}
+
 // ── Clock + Date ─────────────────────────────────────────────────────────────
 const dateBadge = $('date-badge');
 function tickClock() {
@@ -281,7 +376,7 @@ function _unlockInputs() {
 function _editSettings() {
   if (!CAN_MODIFY) return;
   _unlockInputs();
-  _btnFeedback(btnEditSettings, '✓ 已解鎖');
+  _btnFeedback(btnEditSettings, '✓ Unlocked');
 }
 
 // ── Settings persistence (server-side JSON) ───────────────────────────────────
@@ -365,6 +460,62 @@ const _btnSaveLogdir  = $('btn-save-logdir');
 const _btnClearLogdir = $('btn-clear-logdir');
 if (_btnSaveLogdir)  _btnSaveLogdir.addEventListener('click',  _saveSettingsWithFeedback);
 if (_btnClearLogdir) _btnClearLogdir.addEventListener('click', _clearSettings);
+
+if (confirmClose) confirmClose.addEventListener('click', () => _closeConfirm(false));
+if (confirmCancel) confirmCancel.addEventListener('click', () => _closeConfirm(false));
+if (confirmOk) confirmOk.addEventListener('click', () => _closeConfirm(true));
+if (confirmModal) {
+  confirmModal.addEventListener('click', e => {
+    if (e.target === confirmModal) _closeConfirm(false);
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (confirmModal && !confirmModal.classList.contains('hidden')) {
+      _closeConfirm(false);
+      return;
+    }
+    if (dbModal && !dbModal.classList.contains('hidden')) {
+      closeDbModal();
+      return;
+    }
+    if (browseModal && !browseModal.classList.contains('hidden')) {
+      closeBrowseModal();
+    }
+  }
+
+  if (confirmModal && !confirmModal.classList.contains('hidden')) {
+    _trapFocus(confirmModal, e);
+    return;
+  }
+  if (dbModal && !dbModal.classList.contains('hidden')) {
+    _trapFocus(dbModal, e);
+    return;
+  }
+  if (browseModal && !browseModal.classList.contains('hidden')) {
+    _trapFocus(browseModal, e);
+  }
+});
+
+if (filterStation) {
+  filterStation.addEventListener('change', () => {
+    recordsFilter.station = filterStation.value;
+    renderRecordsFromCache();
+  });
+}
+if (filterResult) {
+  filterResult.addEventListener('change', () => {
+    recordsFilter.result = filterResult.value;
+    renderRecordsFromCache();
+  });
+}
+if (filterKeyword) {
+  filterKeyword.addEventListener('input', () => {
+    recordsFilter.keyword = filterKeyword.value.trim().toLowerCase();
+    renderRecordsFromCache();
+  });
+}
 
 if (inputWo) {
   inputWo.addEventListener('change', () => {
@@ -554,11 +705,27 @@ function buildRow(rec) {
     <td><span class="badge ${badgeClass}"><span class="result-icon">${icon}</span>${esc(rec.result)}</span></td>
     <td>${esc(rec.duration)}</td>
     <td class="fail-summary">${failSummary}</td>`;
+  if (failSummary) {
+    const failCell = tr.querySelector('.fail-summary');
+    if (failCell) {
+      failCell.title = 'Click to expand failure details';
+      failCell.addEventListener('click', () => {
+        tr.classList.toggle('expanded');
+      });
+    }
+  }
   return tr;
 }
 
 function prependRecord(rec) {
+  recordsCache.unshift(rec);
+  if (recordsCache.length > MAX_ROWS * 3) {
+    recordsCache = recordsCache.slice(0, MAX_ROWS * 3);
+  }
+  _refreshStationFilterOptions();
+
   const tr = buildRow(rec);
+  if (!_passesFilter(rec)) return;
   const animMap = { PASS: 'new-pass', FAIL: 'new-fail', STOP: 'new-stop' };
   if (animMap[rec.result]) {
     tr.classList.add(animMap[rec.result]);
@@ -592,8 +759,9 @@ function renderSnapshot(snap) {
   renderHourlyChart(snap.hourly_counts || {});
   renderDistribution(snap.result_distribution || { pass_pct: 0, fail_pct: 0, stop_pct: 0 });
 
-  recordsTbody.innerHTML = '';
-  (snap.recent_records || []).forEach(rec => recordsTbody.appendChild(buildRow(rec)));
+  recordsCache = (snap.recent_records || []).slice();
+  _refreshStationFilterOptions();
+  renderRecordsFromCache();
 
   if (snap.log_dir !== undefined) logdirInput.value = snap.log_dir;
 }
@@ -602,6 +770,8 @@ function clearDashboard() {
   [kpiTotal, kpiPass, kpiFail, kpiStop, kpiYield, kpiCompletion, kpiRetest].forEach(el => el.textContent = '—');
   if (statUph) statUph.textContent = '—';
   if (statPpm) statPpm.textContent = '—';
+  recordsCache = [];
+  _refreshStationFilterOptions();
   recordsTbody.innerHTML = '';
   hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
   distChart.innerHTML = '<div class="dist-empty">No data</div>';
@@ -609,6 +779,27 @@ function clearDashboard() {
 
 // ── Browse modal ──────────────────────────────────────────────────────────────
 let _browsePath = '';
+
+function _focusableIn(container) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function _trapFocus(modal, event) {
+  if (event.key !== 'Tab' || !modal || modal.classList.contains('hidden')) return;
+  const focusable = _focusableIn(modal);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 
 async function browseNavigate(path) {
   browseCurrent.textContent = 'Loading...';
@@ -662,6 +853,8 @@ async function browseNavigate(path) {
 function openBrowseModal() {
   if (!CAN_MODIFY) return;
   browseModal.classList.remove('hidden');
+  const box = browseModal.querySelector('.modal-box');
+  if (box) box.focus();
   // Start from backend default root so users can switch between allowed roots.
   browseNavigate('');
 }
@@ -692,10 +885,14 @@ async function applyLogDir(dir) {
       body: JSON.stringify({ log_dir: dir }),
     });
     const data = await res.json();
-    if (!res.ok) alert('Error: ' + (data.error || res.status));
-    else _saveSettings();
+    if (!res.ok) {
+      notify('Failed to apply log directory: ' + (data.error || res.status), 'error');
+    } else {
+      await _saveSettings();
+      notify('Log directory applied', 'success');
+    }
   } catch (e) {
-    alert('Request failed: ' + e.message);
+    notify('Failed to apply log directory: ' + e.message, 'error');
   } finally {
     logdirBrowse.disabled = false;
   }
@@ -713,18 +910,19 @@ if (logSweepBtn) {
     const msg = dir
       ? `Delete ALL .txt files in:\n${dir}\n\nThis cannot be undone. Continue?`
       : 'Delete ALL .txt files in the current log directory?\n\nThis cannot be undone. Continue?';
-    if (!confirm(msg)) return;
+    const ok = await askConfirm(msg, 'Delete');
+    if (!ok) return;
     logSweepBtn.disabled = true;
     try {
       const res = await fetch('/api/log-sweep', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        alert(`Sweep complete: ${data.deleted} file(s) deleted.`);
+        notify(`Sweep complete: ${data.deleted} file(s) deleted.`, 'success');
       } else {
-        alert('Sweep failed: ' + (data.error || res.status));
+        notify('Sweep failed: ' + (data.error || res.status), 'error');
       }
     } catch (e) {
-      alert('Request failed: ' + e.message);
+      notify('Sweep failed: ' + e.message, 'error');
     } finally {
       logSweepBtn.disabled = false;
     }
@@ -794,15 +992,16 @@ async function testDbConnection(showAlert = true) {
     }
     if (res.ok) {
       if (showAlert) _btnFeedback(dbTestBtn, '✓ Success');
+      if (showAlert) notify('Database connection successful', 'success');
       setDbConnectionStatus(true);
     } else {
       const data = await res.json().catch(() => ({}));
-      if (showAlert) alert('Connection failed: ' + (data.error || 'Unknown error'));
+      if (showAlert) notify('Connection failed: ' + (data.error || 'Unknown error'), 'error');
       if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
       setDbConnectionStatus(false);
     }
   } catch (e) {
-    if (showAlert) alert('Request failed: ' + e.message);
+    if (showAlert) notify('Connection test request failed: ' + e.message, 'error');
     if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
     setDbConnectionStatus(false);
   }
@@ -830,6 +1029,8 @@ function setDbConnectionStatus(valid) {
 function openDbModal() {
   if (!CAN_DB) return;
   dbModal.classList.remove('hidden');
+  const box = dbModal.querySelector('.modal-box');
+  if (box) box.focus();
   loadDbSettings();
 }
 function closeDbModal() { dbModal.classList.add('hidden'); }
@@ -845,7 +1046,10 @@ dbModal.addEventListener('click', e => { if (e.target === dbModal) closeDbModal(
 async function triggerUpload() {
   if (!dbConnectionValid || !CAN_DB) return;
   const wo = _getWoValue();
-  if (!wo) { alert("Please select a WO first."); return; }
+  if (!wo) {
+    notify('Please select a WO first.', 'error');
+    return;
+  }
   
   btnUpload.disabled = true;
   try {
@@ -855,17 +1059,24 @@ async function triggerUpload() {
       body: JSON.stringify({ wo: wo })
     });
     const data = await res.json();
-    if (!res.ok) alert('Upload start failed: ' + (data.error || res.status));
-    else _btnFeedback(btnUpload, 'Started');
+    if (!res.ok) {
+      notify('Upload start failed: ' + (data.error || res.status), 'error');
+    } else {
+      _btnFeedback(btnUpload, 'Started');
+      notify('Upload started', 'success');
+    }
   } catch (e) {
-    alert('Request failed: ' + e.message);
+    notify('Upload request failed: ' + e.message, 'error');
   }
 }
 
 async function triggerAutoUpload() {
   if (!dbConnectionValid || !CAN_DB) return;
   const wo = _getWoValue();
-  if (!wo) { alert("Please select a WO first."); return; }
+  if (!wo) {
+    notify('Please select a WO first.', 'error');
+    return;
+  }
   
   btnAutoUpload.disabled = true;
   try {
@@ -879,15 +1090,17 @@ async function triggerAutoUpload() {
       if (data.auto_running) {
         btnAutoUpload.textContent = 'Auto Upload: ON';
         btnAutoUpload.classList.add('light-active');
+        notify('Auto upload enabled', 'success');
       } else {
         btnAutoUpload.textContent = 'Auto Upload: OFF';
         btnAutoUpload.classList.remove('light-active');
+        notify('Auto upload disabled', 'info');
       }
     } else {
-      alert('Auto Upload toggle failed: ' + (data.error || res.status));
+      notify('Auto upload toggle failed: ' + (data.error || res.status), 'error');
     }
   } catch (e) {
-    alert('Request failed: ' + e.message);
+    notify('Auto upload request failed: ' + e.message, 'error');
   } finally {
     setDbConnectionStatus(dbConnectionValid); // Re-evaluate disabled state
   }
