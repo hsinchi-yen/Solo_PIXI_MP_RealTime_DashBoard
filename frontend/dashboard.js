@@ -1159,7 +1159,11 @@ async function saveDbSettings() {
 }
 
 async function testDbConnection(showAlert = true) {
-  if (showAlert) _btnFeedback(dbTestBtn, 'Testing...');
+  if (showAlert) {
+    dbTestBtn.textContent = 'Testing...';
+    dbTestBtn.disabled = true;
+  }
+  let succeeded = false;
   try {
     let res;
     if (showAlert) {
@@ -1180,19 +1184,23 @@ async function testDbConnection(showAlert = true) {
       res = await fetch('/api/db-test');
     }
     if (res.ok) {
-      if (showAlert) _btnFeedback(dbTestBtn, '✓ Success');
       if (showAlert) notify('Database connection successful', 'success');
       setDbConnectionStatus(true);
+      succeeded = true;
     } else {
       const data = await res.json().catch(() => ({}));
       if (showAlert) notify('Connection failed: ' + (data.error || 'Unknown error'), 'error');
-      if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
       setDbConnectionStatus(false);
     }
   } catch (e) {
     if (showAlert) notify('Connection test request failed: ' + e.message, 'error');
-    if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
     setDbConnectionStatus(false);
+  } finally {
+    if (showAlert) {
+      dbTestBtn.disabled = false;
+      dbTestBtn.textContent = succeeded ? '✓ Success' : '✗ Failed';
+      setTimeout(() => { dbTestBtn.textContent = 'Test Connection'; }, 1500);
+    }
   }
 }
 
