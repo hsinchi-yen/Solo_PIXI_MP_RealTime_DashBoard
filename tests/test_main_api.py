@@ -3,6 +3,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+import pytest
 from fastapi import Request
 
 from app import main
@@ -145,3 +146,136 @@ async def test_browse_dir_defaults_to_work_order_root_when_available(monkeypatch
         assert Path(data["current"]).resolve() == root.resolve()
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# _find_wo_dir tests
+# ---------------------------------------------------------------------------
+
+
+def _make_wo_root(tmp_path: Path) -> Path:
+    wo_root = tmp_path / f"wo_root_{uuid.uuid4().hex}"
+    wo_root.mkdir(parents=True)
+    return wo_root
+
+
+def test_find_wo_dir_returns_none_when_root_missing(monkeypatch, tmp_path):
+    missing = tmp_path / "nonexistent"
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", missing)
+    assert main._find_wo_dir("5101-260129012") is None
+
+
+def test_find_wo_dir_matches_plain_name(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    wo_dir = wo_root / "5101-260129012"
+    wo_dir.mkdir()
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    result = main._find_wo_dir("5101-260129012")
+    assert result == wo_dir
+
+
+def test_find_wo_dir_matches_bracket_named_dir(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    wo_dir = wo_root / "[5101-260129012]"
+    wo_dir.mkdir()
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    result = main._find_wo_dir("5101-260129012")
+    assert result == wo_dir
+
+
+def test_find_wo_dir_bracket_with_prefix_text(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    wo_dir = wo_root / "WO [5101-260129012] DONE"
+    wo_dir.mkdir()
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    result = main._find_wo_dir("5101-260129012")
+    assert result == wo_dir
+
+
+def test_find_wo_dir_returns_none_when_no_match(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    (wo_root / "[9999-000000000]").mkdir()
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    assert main._find_wo_dir("5101-260129012") is None
+
+
+def test_find_wo_dir_ignores_files_not_dirs(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    (wo_root / "5101-260129012").write_text("not a dir")
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    assert main._find_wo_dir("5101-260129012") is None
+
+
+# ---------------------------------------------------------------------------
+# path_health API tests
+# ---------------------------------------------------------------------------
+
+
+async def test_path_health_empty_wo(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    resp = await main.path_health(wo="")
+    data = json.loads(resp.body)
+
+    assert data["wo"] == ""
+    assert data["wo_path"] == ""
+    assert data["wo_path_exists"] is False
+
+
+async def test_path_health_wo_found_via_bracket_dir(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    wo_dir = wo_root / "[5101-260129012]"
+    wo_dir.mkdir()
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    resp = await main.path_health(wo="5101-260129012")
+    data = json.loads(resp.body)
+
+    assert data["wo"] == "5101-260129012"
+    assert data["wo_path_exists"] is True
+    assert Path(data["wo_path"]).resolve() == wo_dir.resolve()
+
+
+async def test_path_health_wo_not_found_returns_fallback_path(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    resp = await main.path_health(wo="5101-260129012")
+    data = json.loads(resp.body)
+
+    assert data["wo"] == "5101-260129012"
+    assert data["wo_path_exists"] is False
+    # Fallback path is wo_root / wo_name
+    assert data["wo_path"] != ""
+    assert "5101-260129012" in data["wo_path"]
+
+
+async def test_path_health_wo_root_reflects_monkeypatched_root(monkeypatch, tmp_path):
+    wo_root = _make_wo_root(tmp_path)
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    resp = await main.path_health(wo="")
+    data = json.loads(resp.body)
+
+    assert Path(data["wo_root"]).resolve() == wo_root.resolve()
+    assert data["wo_root_exists"] is True
+
+
+@pytest.mark.parametrize("wo_input,expected_wo", [
+    ("  5101-260129012  ", "5101-260129012"),  # strips whitespace
+    ("5101-260129012", "5101-260129012"),
+])
+async def test_path_health_strips_wo_whitespace(monkeypatch, tmp_path, wo_input, expected_wo):
+    wo_root = _make_wo_root(tmp_path)
+    monkeypatch.setattr(main, "WORK_ORDER_ROOT", wo_root)
+
+    resp = await main.path_health(wo=wo_input)
+    data = json.loads(resp.body)
+
+    assert data["wo"] == expected_wo
