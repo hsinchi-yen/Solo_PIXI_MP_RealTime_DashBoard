@@ -54,7 +54,28 @@ const btnSaveLogdir = $('btn-save-logdir');
 const btnClearLogdir = $('btn-clear-logdir');
 const logSweepBtn = $('btn-log-sweep');
 
+// DB Upload UI Elements
+const btnDbSettings = $('btn-db-settings');
+const dbModal = $('db-modal');
+const dbClose = $('db-close');
+const dbCancelBtn = $('db-cancel-btn');
+const dbTestBtn = $('db-test-btn');
+const dbSaveBtn = $('db-save-btn');
+const dbHost = $('db-host');
+const dbPort = $('db-port');
+const dbName = $('db-name');
+const dbUser = $('db-user');
+const dbPass = $('db-pass');
+const dbBreathingLight = $('db-breathing-light');
+const btnUpload = $('btn-upload');
+const btnAutoUpload = $('btn-auto-upload');
+const uploadStatusText = $('upload-status-text');
+
+let dbConnectionValid = false;
+let dbUploadCheckInterval = null;
+
 let CAN_MODIFY = false;
+let CAN_DB = false;
 const WO_CUSTOM_KEY = '__custom__';
 let WO_MIN_LEN = 13;
 let WO_MAX_LEN = 16;
@@ -197,6 +218,7 @@ function _setModifyControlsEnabled(enabled) {
 
 async function _loadAccessPolicy() {
   CAN_MODIFY = _likelyLocalHost();
+  CAN_DB = _likelyLocalHost();
   try {
     const res = await fetch('/api/access');
     if (res.ok) {
@@ -204,7 +226,22 @@ async function _loadAccessPolicy() {
       CAN_MODIFY = !!data.can_modify;
     }
   } catch (_) {}
+  try {
+    const res = await fetch('/api/db-access');
+    if (res.ok) {
+      const data = await res.json();
+      CAN_DB = !!data.can_db;
+    }
+  } catch (_) {}
   _setModifyControlsEnabled(CAN_MODIFY);
+  _setDbSettingsEnabled(CAN_DB);
+}
+
+function _setDbSettingsEnabled(enabled) {
+  if (btnDbSettings) {
+    btnDbSettings.disabled = !enabled;
+    btnDbSettings.title = enabled ? 'DB Settings' : 'DB Settings (LAN access only)';
+  }
 }
 
 // ── Clock + Date ─────────────────────────────────────────────────────────────
@@ -694,6 +731,207 @@ if (logSweepBtn) {
   });
 }
 
+// ── DB Upload Modal and Settings ──────────────────────────────────────────────
+async function loadDbSettings() {
+  try {
+    const res = await fetch('/api/db-settings');
+    if (res.ok) {
+      const data = await res.json();
+      dbHost.value = data.DB_HOST || '';
+      dbPort.value = data.DB_PORT || '';
+      dbName.value = data.DB_NAME || '';
+      dbUser.value = data.DB_USER || '';
+      dbPass.value = data.DB_PASS || '';
+    }
+  } catch (e) { console.error('Failed to load DB settings:', e); }
+}
+
+async function saveDbSettings() {
+  dbSaveBtn.disabled = true;
+  dbSaveBtn.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/db-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        DB_HOST: dbHost.value.trim(),
+        DB_PORT: dbPort.value.trim(),
+        DB_NAME: dbName.value.trim(),
+        DB_USER: dbUser.value.trim(),
+        DB_PASS: dbPass.value.trim()
+      })
+    });
+    dbSaveBtn.textContent = res.ok ? '✓ Saved' : '✗ Failed';
+    if (res.ok) testDbConnection(false); // silent check, no await
+  } catch (e) {
+    dbSaveBtn.textContent = '✗ Error';
+  } finally {
+    dbSaveBtn.disabled = false;
+    setTimeout(() => { dbSaveBtn.textContent = 'Save'; }, 1500);
+  }
+}
+
+async function testDbConnection(showAlert = true) {
+  if (showAlert) _btnFeedback(dbTestBtn, 'Testing...');
+  try {
+    let res;
+    if (showAlert) {
+      // User-initiated: test with current form values, not saved config
+      res = await fetch('/api/db-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          DB_HOST: dbHost.value.trim(),
+          DB_PORT: dbPort.value.trim(),
+          DB_NAME: dbName.value.trim(),
+          DB_USER: dbUser.value.trim(),
+          DB_PASS: dbPass.value.trim(),
+        }),
+      });
+    } else {
+      // Silent check: use saved config on server
+      res = await fetch('/api/db-test');
+    }
+    if (res.ok) {
+      if (showAlert) _btnFeedback(dbTestBtn, '✓ Success');
+      setDbConnectionStatus(true);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      if (showAlert) alert('Connection failed: ' + (data.error || 'Unknown error'));
+      if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
+      setDbConnectionStatus(false);
+    }
+  } catch (e) {
+    if (showAlert) alert('Request failed: ' + e.message);
+    if (showAlert) _btnFeedback(dbTestBtn, '✗ Failed');
+    setDbConnectionStatus(false);
+  }
+}
+
+function setDbConnectionStatus(valid) {
+  dbConnectionValid = valid;
+  dbBreathingLight.className = valid ? 'conn-dot connected' : 'conn-dot disconnected';
+  
+  // Disable buttons if not valid or no WO
+  const hasWo = _getWoValue() && _getWoValue() !== WO_CUSTOM_KEY;
+  const canOperate = valid && hasWo && CAN_DB;
+  btnUpload.disabled = !canOperate;
+  btnAutoUpload.disabled = !canOperate;
+  
+  if (!valid) {
+    uploadStatusText.textContent = 'DB Not Connected';
+  } else if (!hasWo) {
+    uploadStatusText.textContent = 'Select a WO first';
+  } else if (!uploadStatusText.textContent.includes('stats:')) {
+    uploadStatusText.textContent = 'Ready';
+  }
+}
+
+function openDbModal() {
+  if (!CAN_DB) return;
+  dbModal.classList.remove('hidden');
+  loadDbSettings();
+}
+function closeDbModal() { dbModal.classList.add('hidden'); }
+
+btnDbSettings.addEventListener('click', openDbModal);
+dbClose.addEventListener('click', closeDbModal);
+dbCancelBtn.addEventListener('click', closeDbModal);
+dbSaveBtn.addEventListener('click', saveDbSettings);
+dbTestBtn.addEventListener('click', () => testDbConnection(true));
+dbModal.addEventListener('click', e => { if (e.target === dbModal) closeDbModal(); });
+
+// ── Upload Actions ────────────────────────────────────────────────────────────
+async function triggerUpload() {
+  if (!dbConnectionValid || !CAN_DB) return;
+  const wo = _getWoValue();
+  if (!wo) { alert("Please select a WO first."); return; }
+  
+  btnUpload.disabled = true;
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wo: wo })
+    });
+    const data = await res.json();
+    if (!res.ok) alert('Upload start failed: ' + (data.error || res.status));
+    else _btnFeedback(btnUpload, 'Started');
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+  }
+}
+
+async function triggerAutoUpload() {
+  if (!dbConnectionValid || !CAN_DB) return;
+  const wo = _getWoValue();
+  if (!wo) { alert("Please select a WO first."); return; }
+  
+  btnAutoUpload.disabled = true;
+  try {
+    const res = await fetch('/api/auto-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wo: wo })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      if (data.auto_running) {
+        btnAutoUpload.textContent = 'Auto Upload: ON';
+        btnAutoUpload.classList.add('light-active');
+      } else {
+        btnAutoUpload.textContent = 'Auto Upload: OFF';
+        btnAutoUpload.classList.remove('light-active');
+      }
+    } else {
+      alert('Auto Upload toggle failed: ' + (data.error || res.status));
+    }
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+  } finally {
+    setDbConnectionStatus(dbConnectionValid); // Re-evaluate disabled state
+  }
+}
+
+async function pollUploadStatus() {
+  if (!dbConnectionValid) return;
+  try {
+    const res = await fetch('/api/upload-status');
+    if (res.ok) {
+      const data = await res.json();
+      const st = data.stats;
+      
+      let msg = '';
+      if (data.auto_running) msg += '[Auto ON] ';
+      if (data.is_uploading) msg += '[Uploading] ';
+      msg += `stats: ${st.uploaded}↑ ${st.skipped}⏭ ${st.failed}✗`;
+      uploadStatusText.textContent = msg;
+      
+      if (data.auto_running) {
+        btnAutoUpload.textContent = 'Auto Upload: ON';
+        btnAutoUpload.style.color = 'var(--pass)';
+      } else {
+        btnAutoUpload.textContent = 'Auto Upload: OFF';
+        btnAutoUpload.style.color = '';
+      }
+      
+      if (data.is_uploading) {
+        btnUpload.disabled = true;
+      } else {
+        setDbConnectionStatus(dbConnectionValid);
+      }
+    }
+  } catch (e) {}
+}
+
+btnUpload.addEventListener('click', triggerUpload);
+btnAutoUpload.addEventListener('click', triggerAutoUpload);
+
+// Poll upload status every 2s (DB test only runs on user action, not polled)
+setInterval(pollUploadStatus, 2000);
+
+inputWo.addEventListener('change', () => setDbConnectionStatus(dbConnectionValid));
+
 // ── Main init ─────────────────────────────────────────────────────────────────
 async function init() {
   await _loadAccessPolicy();
@@ -704,6 +942,9 @@ async function init() {
     const cfg = await fetch('/api/config').then(r => r.json());
     logdirInput.value = cfg.log_dir || '';
   } catch (_) {}
+
+  // Run initial DB check in background — do not block page load
+  testDbConnection(false);
 
   let snap;
   try {

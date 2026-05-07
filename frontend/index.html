@@ -35,6 +35,28 @@
   </div>
 </div>
 
+<!-- DB Settings modal -->
+<div id="db-modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Database Settings</span>
+      <button id="db-close" class="modal-close">✕</button>
+    </div>
+    <div class="db-form">
+      <label>Host: <input type="text" id="db-host"></label>
+      <label>Port: <input type="text" id="db-port"></label>
+      <label>DB Name: <input type="text" id="db-name"></label>
+      <label>User: <input type="text" id="db-user"></label>
+      <label>Password: <input type="password" id="db-pass"></label>
+    </div>
+    <div class="modal-footer">
+      <button id="db-test-btn" class="hf-btn">Test Connection</button>
+      <button id="db-save-btn" class="hf-btn hf-btn-save">Save</button>
+      <button id="db-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Header -->
 <header>
   <!-- Block 1: App identity -->
@@ -58,6 +80,15 @@
       <button id="btn-edit-settings" class="hf-btn hf-btn-edit hidden" title="解鎖編輯 WO / QTY">🔓 Edit</button>
       <button id="btn-save-settings" class="hf-btn hf-btn-save" title="儲存 WO / QTY / LOG DIR">💾 Save</button>
       <button id="btn-clear-settings" class="hf-btn hf-btn-clear" title="清除已儲存的 WO / QTY / LOG DIR">🗑 Clear</button>
+      
+      <span class="hf-sep" style="margin-left: 20px;"></span>
+      
+      <!-- DB Upload Section -->
+      <button id="btn-db-settings" class="hf-btn" title="DB Settings">⚙️</button>
+      <div id="db-breathing-light" class="conn-dot disconnected" title="DB Connection Status" style="margin-right: 10px;"></div>
+      <button id="btn-upload" class="hf-btn hf-btn-save" title="上傳所選 WO 的所有資料">Upload</button>
+      <button id="btn-auto-upload" class="hf-btn" title="開啟/關閉自動上傳">Auto Upload: OFF</button>
+      <div id="upload-status-text" style="font-size: 11px; margin-left: 10px; color: #888;"></div>
     </div>
   </div>
 
@@ -186,6 +217,6 @@
   <button id="theme-btn" class="theme-btn" title="Toggle Daylight / Dark mode">☀ DAY</button>
 </footer>
 
-<script src="/static/dashboard.js?v=12"></script>
+<script src="/static/dashboard.js?v=14"></script>
 </body>
 </html>

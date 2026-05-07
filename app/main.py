@@ -17,6 +17,7 @@ from .parser import parse
 from .sse import SSEManager, TooManyConnectionsError
 from .state import DashboardState
 from .watcher import start_watcher
+from .uploader import uploader_manager, load_db_config, save_db_config, get_dsn, async_test_connection
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,6 +105,36 @@ def _require_localhost(request: Request) -> JSONResponse | None:
         return None
     return JSONResponse(
         {"error": "modification allowed only from localhost"},
+        status_code=403,
+    )
+
+
+# DB settings are accessible from localhost AND the configured LAN subnet.
+# Override via env var DB_ALLOW_CIDR (e.g. "192.168.1.0/24").
+_DB_ALLOW_CIDR = os.getenv("DB_ALLOW_CIDR", "10.0.0.0/8")
+try:
+    _DB_ALLOW_NET = ipaddress.ip_network(_DB_ALLOW_CIDR, strict=False)
+except ValueError:
+    _DB_ALLOW_NET = ipaddress.ip_network("10.0.0.0/8")
+
+
+def _is_lan_db_request(request: Request) -> bool:
+    if _is_local_request(request):
+        return True
+    raw = _client_host(request).split("%", 1)[0]
+    if raw.startswith("::ffff:"):
+        raw = raw[7:]
+    try:
+        return ipaddress.ip_address(raw) in _DB_ALLOW_NET
+    except ValueError:
+        return False
+
+
+def _require_db_access(request: Request) -> JSONResponse | None:
+    if _is_lan_db_request(request):
+        return None
+    return JSONResponse(
+        {"error": "DB settings accessible only from localhost or LAN"},
         status_code=403,
     )
 
@@ -258,6 +289,16 @@ async def access(request: Request):
     return JSONResponse(
         {
             "can_modify": _is_local_request(request),
+            "client_host": _client_host(request),
+        }
+    )
+
+
+@app.get("/api/db-access")
+async def db_access(request: Request):
+    return JSONResponse(
+        {
+            "can_db": _is_lan_db_request(request),
             "client_host": _client_host(request),
         }
     )
@@ -505,3 +546,96 @@ async def browse_dir(request: Request, path: str = ""):
         parent_path = p
     parent = str(parent_path)
     return JSONResponse({"current": str(p), "parent": parent, "dirs": dirs})
+
+
+# --- DB Uploader APIs ---
+
+@app.get("/api/db-settings")
+async def get_db_settings(request: Request):
+    denied = _require_db_access(request)
+    if denied:
+        return denied
+    return JSONResponse(load_db_config())
+
+
+@app.post("/api/db-settings")
+async def set_db_settings(request: Request, body: dict):
+    denied = _require_db_access(request)
+    if denied:
+        return denied
+    cfg = load_db_config()
+    for k in ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASS"]:
+        if k in body:
+            cfg[k] = str(body[k])
+    try:
+        save_db_config(cfg)
+    except Exception as e:
+        logger.error("Failed to write .env: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"ok": True})
+
+
+@app.api_route("/api/db-test", methods=["GET", "POST"])
+async def test_db_connection(request: Request):
+    denied = _require_db_access(request)
+    if denied:
+        return denied
+
+    dsn: str | None = None
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict) and body.get("DB_HOST"):
+                dsn = (
+                    f"postgresql://{body.get('DB_USER', '')}:{body.get('DB_PASS', '')}"
+                    f"@{body.get('DB_HOST', '')}:{body.get('DB_PORT', '5432')}/{body.get('DB_NAME', '')}"
+                )
+        except Exception:
+            pass
+
+    try:
+        await async_test_connection(dsn)
+        return JSONResponse({"ok": True})
+    except ImportError:
+        return JSONResponse({"error": "asyncpg is not installed"}, status_code=500)
+    except Exception as e:
+        msg = str(e) or f"{type(e).__name__}: connection failed"
+        return JSONResponse({"error": msg}, status_code=500)
+
+
+@app.post("/api/upload")
+async def trigger_upload(request: Request, body: dict):
+    denied = _require_db_access(request)
+    if denied:
+        return denied
+    wo = body.get("wo")
+    if not wo:
+        return JSONResponse({"error": "WO is required"}, status_code=400)
+    target_path = config.paths.log_dir / wo
+    if not target_path.is_dir():
+        return JSONResponse({"error": f"Directory not found: {target_path}"}, status_code=404)
+    started = uploader_manager.start_manual_upload(str(target_path))
+    if started:
+        return JSONResponse({"ok": True, "message": "Upload started"})
+    return JSONResponse({"error": "An upload is already running"}, status_code=400)
+
+
+@app.post("/api/auto-upload")
+async def trigger_auto_upload(request: Request, body: dict):
+    denied = _require_db_access(request)
+    if denied:
+        return denied
+    wo = body.get("wo")
+    if not wo:
+        return JSONResponse({"error": "WO is required"}, status_code=400)
+    target_path = config.paths.log_dir / wo
+    if not target_path.is_dir() and not uploader_manager.auto_upload_running:
+        return JSONResponse({"error": f"Directory not found: {target_path}"}, status_code=404)
+    is_running = uploader_manager.toggle_auto_upload(str(target_path))
+    return JSONResponse({"ok": True, "auto_running": is_running})
+
+
+@app.get("/api/upload-status")
+async def get_upload_status(request: Request):
+    return JSONResponse(uploader_manager.get_status())
+

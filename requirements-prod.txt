@@ -5,3 +5,5 @@ fastapi==0.111.*
 uvicorn==0.30.*
 watchdog==4.*
 tomli>=2.0; python_version < "3.11"
+asyncpg>=0.29
+psycopg2-binary>=2.9
