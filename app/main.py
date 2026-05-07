@@ -176,6 +176,16 @@ def _extract_work_order_from_dirname(name: str) -> str | None:
     return text
 
 
+def _find_wo_dir(wo: str) -> Path | None:
+    """Return the first directory under WORK_ORDER_ROOT whose name matches wo."""
+    if not WORK_ORDER_ROOT.is_dir():
+        return None
+    for child in WORK_ORDER_ROOT.iterdir():
+        if child.is_dir() and _extract_work_order_from_dirname(child.name) == wo:
+            return child
+    return None
+
+
 def _scan_work_orders() -> list[str]:
     if not WORK_ORDER_ROOT.is_dir():
         return []
@@ -611,12 +621,12 @@ async def trigger_upload(request: Request, body: dict):
     wo = body.get("wo")
     if not wo:
         return JSONResponse({"error": "WO is required"}, status_code=400)
-    target_path = config.paths.log_dir / wo
-    if not target_path.is_dir():
-        return JSONResponse({"error": f"Directory not found: {target_path}"}, status_code=404)
+    target_path = _find_wo_dir(wo)
+    if target_path is None or not target_path.is_dir():
+        return JSONResponse({"error": f"WO directory not found: {wo}"}, status_code=404)
     started = uploader_manager.start_manual_upload(str(target_path))
     if started:
-        return JSONResponse({"ok": True, "message": "Upload started"})
+        return JSONResponse({"ok": True, "message": "Upload started", "path": str(target_path)})
     return JSONResponse({"error": "An upload is already running"}, status_code=400)
 
 
@@ -628,11 +638,11 @@ async def trigger_auto_upload(request: Request, body: dict):
     wo = body.get("wo")
     if not wo:
         return JSONResponse({"error": "WO is required"}, status_code=400)
-    target_path = config.paths.log_dir / wo
-    if not target_path.is_dir() and not uploader_manager.auto_upload_running:
-        return JSONResponse({"error": f"Directory not found: {target_path}"}, status_code=404)
-    is_running = uploader_manager.toggle_auto_upload(str(target_path))
-    return JSONResponse({"ok": True, "auto_running": is_running})
+    target_path = _find_wo_dir(wo)
+    if target_path is None and not uploader_manager.auto_upload_running:
+        return JSONResponse({"error": f"WO directory not found: {wo}"}, status_code=404)
+    is_running = uploader_manager.toggle_auto_upload(str(target_path) if target_path else "")
+    return JSONResponse({"ok": True, "auto_running": is_running, "path": str(target_path) if target_path else ""})
 
 
 @app.get("/api/upload-status")
