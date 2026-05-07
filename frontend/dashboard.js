@@ -62,13 +62,18 @@ const confirmMsg    = $('confirm-message');
 const filterStation = $('filter-station');
 const filterResult  = $('filter-result');
 const filterKeyword = $('filter-keyword');
+const filterAnomalyBtn = $('filter-anomaly-priority');
+const stationQuickChips = $('station-quick-chips');
 const recordsCountMeta = $('records-count-meta');
 const opsMode = $('ops-mode');
 const opsWo = $('ops-wo');
 const opsLogdir = $('ops-logdir');
 const opsDb = $('ops-db');
+const opsWoRoot = $('ops-wo-root');
+const opsRawlogs = $('ops-rawlogs');
 const logdirWoRoot = $('logdir-wo-root');
 const logdirRawlogs = $('logdir-rawlogs');
+const woFolderPath = $('wo-folder-path');
 
 // DB Upload UI Elements
 const btnDbSettings = $('btn-db-settings');
@@ -94,6 +99,7 @@ let recordsFilter = {
   station: '',
   result: '',
   keyword: '',
+  anomalyFirst: false,
 };
 let _confirmResolve = null;
 
@@ -136,6 +142,57 @@ function _refreshOpsStrip() {
       opsDb.textContent = 'OFFLINE';
       opsDb.className = 'ops-value bad';
     }
+  }
+}
+
+function _getWoFolderPath() {
+  const wo = _getWoValue();
+  if (!wo) return '';
+  return `${DEFAULT_WO_ROOT}/${wo}`;
+}
+
+function _refreshWoPathLabel(exists = null) {
+  if (!woFolderPath) return;
+  const path = _getWoFolderPath();
+  if (!path) {
+    woFolderPath.textContent = 'WO PATH: —';
+    woFolderPath.classList.remove('ok', 'bad');
+    return;
+  }
+  woFolderPath.textContent = `WO PATH: ${_shortPath(path, 52)}`;
+  woFolderPath.classList.remove('ok', 'bad');
+  if (exists === true) woFolderPath.classList.add('ok');
+  if (exists === false) woFolderPath.classList.add('bad');
+}
+
+function _setHealthLabel(el, ok, locked = false) {
+  if (!el) return;
+  el.className = 'ops-value';
+  if (locked) {
+    el.textContent = 'LOCKED';
+    el.classList.add('warn');
+    return;
+  }
+  el.textContent = ok ? 'READY' : 'MISSING';
+  el.classList.add(ok ? 'ok' : 'bad');
+}
+
+async function _refreshPathHealth() {
+  const wo = _getWoValue();
+  _refreshWoPathLabel(null);
+
+  try {
+    const suffix = wo ? `?wo=${encodeURIComponent(wo)}` : '';
+    const res = await fetch(`/api/path-health${suffix}`);
+    if (!res.ok) throw new Error('path health unavailable');
+    const data = await res.json();
+    _setHealthLabel(opsWoRoot, !!data.wo_root_exists);
+    _setHealthLabel(opsRawlogs, !!data.rawlogs_root_exists);
+    _refreshWoPathLabel(wo ? !!data.wo_path_exists : null);
+  } catch (_) {
+    _setHealthLabel(opsWoRoot, false, !CAN_MODIFY);
+    _setHealthLabel(opsRawlogs, false, !CAN_MODIFY);
+    _refreshWoPathLabel(null);
   }
 }
 
@@ -276,6 +333,7 @@ function _setModifyControlsEnabled(enabled) {
     _setWoCustomMode(inputWo?.value === WO_CUSTOM_KEY);
   }
   _refreshOpsStrip();
+  _refreshPathHealth();
 }
 
 async function _loadAccessPolicy() {
@@ -298,6 +356,7 @@ async function _loadAccessPolicy() {
   _setModifyControlsEnabled(CAN_MODIFY);
   _setDbSettingsEnabled(CAN_DB);
   _refreshOpsStrip();
+  _refreshPathHealth();
 }
 
 function _setDbSettingsEnabled(enabled) {
@@ -359,6 +418,33 @@ function _refreshStationFilterOptions() {
     filterStation.appendChild(opt);
   });
   filterStation.value = stations.includes(current) ? current : '';
+
+  if (stationQuickChips) {
+    stationQuickChips.innerHTML = '';
+    const allBtn = document.createElement('button');
+    allBtn.className = `station-chip ${!recordsFilter.station ? 'active' : ''}`;
+    allBtn.textContent = 'ALL';
+    allBtn.addEventListener('click', () => {
+      recordsFilter.station = '';
+      filterStation.value = '';
+      renderRecordsFromCache();
+      _refreshStationFilterOptions();
+    });
+    stationQuickChips.appendChild(allBtn);
+
+    stations.slice(0, 8).forEach(st => {
+      const btn = document.createElement('button');
+      btn.className = `station-chip ${recordsFilter.station === st ? 'active' : ''}`;
+      btn.textContent = st;
+      btn.addEventListener('click', () => {
+        recordsFilter.station = st;
+        filterStation.value = st;
+        renderRecordsFromCache();
+        _refreshStationFilterOptions();
+      });
+      stationQuickChips.appendChild(btn);
+    });
+  }
 }
 
 function _passesFilter(rec) {
@@ -380,9 +466,23 @@ function _passesFilter(rec) {
   return true;
 }
 
+function _sortRecords(rows) {
+  if (!recordsFilter.anomalyFirst) return rows;
+  const rank = r => {
+    if (r.result === 'STOP') return 2;
+    if (r.result === 'FAIL') return 1;
+    return 0;
+  };
+  return [...rows].sort((a, b) => {
+    const d = rank(b) - rank(a);
+    if (d !== 0) return d;
+    return 0;
+  });
+}
+
 function renderRecordsFromCache() {
   recordsTbody.innerHTML = '';
-  const filtered = recordsCache.filter(_passesFilter);
+  const filtered = _sortRecords(recordsCache.filter(_passesFilter));
   filtered.slice(0, MAX_ROWS).forEach(rec => {
     recordsTbody.appendChild(buildRow(rec));
   });
@@ -462,6 +562,7 @@ async function _saveSettingsWithFeedback() {
     _btnFeedback($('btn-save-settings'), '✓ Saved!');
     _btnFeedback($('btn-save-logdir'),   '✓');
     _refreshOpsStrip();
+    _refreshPathHealth();
   } else {
     _btnFeedback($('btn-save-settings'), '✗ Failed');
   }
@@ -481,6 +582,7 @@ async function _clearSettings() {
   _unlockInputs();
   updateCompletion();
   _refreshOpsStrip();
+  _refreshPathHealth();
   _btnFeedback($('btn-clear-settings'), '✓ Cleared!');
 }
 
@@ -495,6 +597,7 @@ async function _restoreSettings() {
     logdirInput.value = s.log_dir || DEFAULT_LOG_DIR;
     if (s.wo || s.qty) { _lockInputs(); }
     _refreshOpsStrip();
+    _refreshPathHealth();
   } catch (e) {
     console.error('Failed to restore settings:', e);
   }
@@ -572,15 +675,27 @@ if (filterKeyword) {
     renderRecordsFromCache();
   });
 }
+if (filterAnomalyBtn) {
+  filterAnomalyBtn.addEventListener('click', () => {
+    recordsFilter.anomalyFirst = !recordsFilter.anomalyFirst;
+    filterAnomalyBtn.textContent = `Anomaly Priority: ${recordsFilter.anomalyFirst ? 'ON' : 'OFF'}`;
+    filterAnomalyBtn.classList.toggle('active', recordsFilter.anomalyFirst);
+    renderRecordsFromCache();
+  });
+}
 
 if (inputWo) {
   inputWo.addEventListener('change', () => {
     _setWoCustomMode(inputWo.value === WO_CUSTOM_KEY);
     _refreshOpsStrip();
+    _refreshPathHealth();
   });
 }
 if (inputWoCustom) {
-  inputWoCustom.addEventListener('input', _refreshOpsStrip);
+  inputWoCustom.addEventListener('input', () => {
+    _refreshOpsStrip();
+    _refreshPathHealth();
+  });
 }
 
 if (btnWoRefresh) {
@@ -609,7 +724,10 @@ function updateCompletion() {
 }
 inputTarget.addEventListener('input', updateCompletion);
 if (logdirInput) {
-  logdirInput.addEventListener('input', _refreshOpsStrip);
+  logdirInput.addEventListener('input', () => {
+    _refreshOpsStrip();
+    _refreshPathHealth();
+  });
 }
 
 // ── KPI trend tracking ────────────────────────────────────────────────────────
@@ -832,6 +950,7 @@ function renderSnapshot(snap) {
 
   if (snap.log_dir !== undefined) logdirInput.value = snap.log_dir || DEFAULT_LOG_DIR;
   _refreshOpsStrip();
+  _refreshPathHealth();
 }
 
 function clearDashboard() {
@@ -844,6 +963,7 @@ function clearDashboard() {
   hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
   distChart.innerHTML = '<div class="dist-empty">No data</div>';
   if (recordsCountMeta) recordsCountMeta.textContent = '0 / 0';
+  _refreshPathHealth();
 }
 
 // ── Browse modal ──────────────────────────────────────────────────────────────
@@ -960,6 +1080,7 @@ async function applyLogDir(dir) {
       await _saveSettings();
       notify('Log directory applied', 'success');
       _refreshOpsStrip();
+      _refreshPathHealth();
     }
   } catch (e) {
     notify('Failed to apply log directory: ' + e.message, 'error');
@@ -1242,6 +1363,7 @@ async function init() {
     logdirInput.value = cfg.log_dir || DEFAULT_LOG_DIR;
   } catch (_) {}
   _refreshOpsStrip();
+  _refreshPathHealth();
 
   // Run initial DB check in background — do not block page load
   testDbConnection(false);
@@ -1313,6 +1435,7 @@ async function _silentRefresh() {
   } catch (_) {}
 }
 setInterval(_silentRefresh, 30000);
+setInterval(_refreshPathHealth, 15000);
 
 // ── Theme toggle (Daylight ↔ Dark) ───────────────────────────────────────────
 const themeBtn = $('theme-btn');

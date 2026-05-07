@@ -183,6 +183,26 @@ header {
 .upload-controls {
   margin-left: auto;
 }
+.wo-folder-path {
+  max-width: 280px;
+  font-size: 11px;
+  color: #9ec3ff;
+  border: 1px solid var(--border);
+  background: #121a2c;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wo-folder-path.ok {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+.wo-folder-path.bad {
+  border-color: var(--fail);
+  color: #ffb0b0;
+}
 .hf-sep-wide {
   margin-left: 20px;
 }
@@ -593,6 +613,42 @@ select:focus-visible,
   flex: 1;
   min-width: 160px;
 }
+.filter-anomaly-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.filter-anomaly-btn.active {
+  border-color: var(--stop);
+  color: var(--stop);
+}
+.station-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.station-chip {
+  border: 1px solid var(--border);
+  background: #171729;
+  color: var(--text-dim);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.station-chip:hover {
+  border-color: var(--info);
+  color: var(--text);
+}
+.station-chip.active {
+  border-color: var(--info);
+  color: var(--info);
+  background: #122033;
+}
 
 /* ── RECORDS TABLE ───────────────────────────────────────────────── */
 .records-table {
@@ -954,6 +1010,7 @@ body.light-mode .header-sep      { background: #c0c4d8; }
 body.light-mode .ops-strip       { background: #e4e6f2; border-bottom-color: #c0c4d8; }
 body.light-mode .ops-chip        { background: #f9faff; border-color: #cfd4e5; }
 body.light-mode .hf-input        { background: #fff; color: #111827; }
+body.light-mode .wo-folder-path  { background: #edf4ff; color: #0f3c8a; border-color: #b8c7ea; }
 body.light-mode .hf-sep          { background: #c0c4d8; }
 body.light-mode .hf-btn          { background: #d8dae8; color: #111827; border-color: #c0c4d8; }
 body.light-mode .theme-btn         { background: #fbbf24; color: #1a1000; border-color: #f59e0b; }
@@ -981,6 +1038,8 @@ body.light-mode .modal-close     { color: #4b5563; }
 body.light-mode .app-title       { color: #111827; }
 body.light-mode .upload-status-text { color: #4b5563; }
 body.light-mode .filter-input { background: #fff; color: #111827; }
+body.light-mode .station-chip { background: #eef1ff; color: #374151; }
+body.light-mode .station-chip.active { background: #dde8ff; color: #0f3c8a; border-color: #93b2ef; }
 body.light-mode .toast { background: #fff; }
 
 /* ── TREND ARROWS ────────────────────────────────────────────────────────── */

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=13">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
 
@@ -88,6 +88,7 @@
       <div class="upload-controls">
         <button id="btn-db-settings" class="hf-btn" title="Database settings" aria-label="Open database settings">⚙️</button>
         <div id="db-breathing-light" class="conn-dot disconnected" title="DB connection status"></div>
+        <span id="wo-folder-path" class="wo-folder-path" title="Selected WO folder path">WO PATH: —</span>
         <button id="btn-upload" class="hf-btn hf-btn-save" title="Upload all records for selected WO">Upload</button>
         <button id="btn-auto-upload" class="hf-btn" title="Toggle auto upload">Auto Upload: OFF</button>
         <div id="upload-status-text" class="upload-status-text" aria-live="polite"></div>
@@ -122,6 +123,14 @@
   <div class="ops-chip">
     <span class="ops-label">DB</span>
     <span id="ops-db" class="ops-value">CHECKING</span>
+  </div>
+  <div class="ops-chip">
+    <span class="ops-label">WO ROOT</span>
+    <span id="ops-wo-root" class="ops-value">CHECKING</span>
+  </div>
+  <div class="ops-chip">
+    <span class="ops-label">RAWLOGS</span>
+    <span id="ops-rawlogs" class="ops-value">CHECKING</span>
   </div>
 </section>
 
@@ -206,8 +215,10 @@
         <option value="FAIL">FAIL</option>
         <option value="STOP">STOP</option>
       </select>
+      <button id="filter-anomaly-priority" class="hf-btn filter-anomaly-btn" title="Toggle anomaly-first sorting">Anomaly Priority: OFF</button>
       <input id="filter-keyword" class="filter-input filter-keyword" type="text" placeholder="Search MAC / failure item" aria-label="Keyword filter">
     </div>
+    <div id="station-quick-chips" class="station-quick-chips" aria-label="Quick station filters"></div>
     <div class="table-scroll">
       <table class="records-table">
         <colgroup>
@@ -269,6 +280,6 @@
   </div>
 </div>
 
-<script src="/static/dashboard.js?v=16"></script>
+<script src="/static/dashboard.js?v=18"></script>
 </body>
 </html>

@@ -337,6 +337,33 @@ async def work_orders(request: Request, refresh: int = 0):
     )
 
 
+@app.get("/api/path-health")
+async def path_health(wo: str = ""):
+    wo_root = WORK_ORDER_ROOT.resolve()
+    rawlogs_root = (WORK_ORDER_ROOT / "rawlogs").resolve()
+    log_dir = config.paths.log_dir.resolve()
+    wo_name = (wo or "").strip()
+    wo_path = (wo_root / wo_name).resolve() if wo_name else None
+
+    wo_path_exists = False
+    if wo_path is not None:
+        wo_path_exists = wo_path.is_dir() and _is_within(wo_path, wo_root)
+
+    return JSONResponse(
+        {
+            "wo_root": str(wo_root),
+            "wo_root_exists": wo_root.is_dir(),
+            "rawlogs_root": str(rawlogs_root),
+            "rawlogs_root_exists": rawlogs_root.is_dir(),
+            "log_dir": str(log_dir),
+            "log_dir_exists": log_dir.is_dir(),
+            "wo": wo_name,
+            "wo_path": str(wo_path) if wo_path else "",
+            "wo_path_exists": wo_path_exists,
+        }
+    )
+
+
 @app.get("/api/snapshot")
 async def snapshot():
     return JSONResponse(state.get_snapshot())
