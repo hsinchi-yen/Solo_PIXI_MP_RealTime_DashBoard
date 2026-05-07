@@ -28,7 +28,7 @@ def get_resource_path(*parts):
 
 APP_ICON_PATH = get_resource_path('build_assets', 'icons', 'solo_pixi_splitter.ico')
 DEFAULT_POLL_INTERVAL = 60
-DEFAULT_RSYNC_PATH = 'root@10.20.31.106:/run/media/nvme0n1p1/rawlogs/'
+DEFAULT_RSYNC_PATH = 'root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/'
 STATION_OPTIONS = ['10', '20', '30', '40', '50', '60', '70', '80']
 
 # ─────────────────────────────────────────────────────────────
@@ -1094,7 +1094,7 @@ class RealtimeSplitterApp(QMainWindow):
         lay.addLayout(h2)
         
         # DST hint label
-        hint = QLabel("💡 Default: root@10.20.31.106:/run/media/nvme0n1p1/rawlogs/")
+        hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
         hint.setObjectName("statusKey")
         hint.setStyleSheet("color: #5D5D5D; font-size: 9px; padding-left: 33px;")
         lay.addWidget(hint)
