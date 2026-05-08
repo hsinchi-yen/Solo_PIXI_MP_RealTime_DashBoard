@@ -1,7 +1,7 @@
 # i.MX8M Plus (tep-imx8mp) 系統優化指南
 
 **平台**：NXP i.MX8M Plus SoC，Yocto Linux + Wayland + systemd  
-**最後更新**：2026-05-07  
+**最後更新**：2026-05-08  
 **適用版本**：pixi-dashboard deploy ≥ commit `066bd88`
 
 ---
@@ -114,9 +114,71 @@ systemctl stop ofono bluetooth wpa_supplicant avahi-daemon atd neard nfs-statd r
 systemctl disable ofono bluetooth wpa_supplicant avahi-daemon atd neard nfs-statd rpcbind upower
 ```
 
+### 1.4 已驗證的最終狀態
+
+本次調整後，已完成 2 次 reboot 回歸驗證：
+
+- 開機總時間約 **20 秒**
+- `pixi-dash` container 可自動啟動
+- `chromium-kiosk.service` 會在 dashboard service 後啟動
+- `http://127.0.0.1:8080/api/snapshot` 可正常回應
+
 ---
 
-## 二、目前剩餘的優化候選項目
+## 二、目前系統分工與實際部署模式
+
+### 2.1 啟動鏈分工
+
+目前正式機並不是「只靠 Docker 指令跑起來」，而是以下三層分工：
+
+1. `docker build` / `docker run`
+    - 建立 image 與名為 `pixi-dash` 的容器
+    - 保留 volume 掛載與 host network
+2. `systemd`
+    - `pixi-dash.service` 於開機時執行 `docker start pixi-dash`
+    - drop-ins 確保 Docker 不會被 `network-online.target` 卡住
+3. `chromium-kiosk.service`
+    - 等待 dashboard 後再開 kiosk UI
+
+### 2.2 網路服務分工
+
+目前實際運行分工如下：
+
+- `connman.service`
+   - 管理 `eth0`
+   - 提供主 LAN 連線
+   - `main.conf` 已將 `eth1` 列入 blacklist
+- `systemd-networkd.service`
+   - 管理 `eth1`
+   - 由 `/etc/systemd/network/20-eth1.network` 指定 `192.168.100.1/24`
+- `dnsmasq.service`
+   - 綁定 `eth1`
+   - 提供 `192.168.100.2–192.168.100.253` DHCP 範圍
+
+因此目前不是純 `iptables` 方式部署 DHCP。  
+`iptables` 主要負責 NAT / forwarding / Docker 規則；DHCP 發號本身仍是 `dnsmasq`。
+
+### 2.3 前端權限分流
+
+目前 Web UI 權限不是全部一樣，而是分成兩級：
+
+- **localhost only**
+   - WO / QTY / LOG DIR 修改
+   - work-order refresh
+   - browse-dir
+   - log sweep
+   - mission save / clear
+- **localhost + LAN subnet**
+   - DB settings
+   - DB test
+   - Upload
+   - Auto Upload
+
+這個設計讓遠端操作者可以進行 DB 與 upload 維運，但不能直接改設備本機的 mission/logdir。
+
+---
+
+## 三、目前剩餘的優化候選項目
 
 ### 2.1 網路管理器二擇一（connman vs systemd-networkd）
 
@@ -139,7 +201,7 @@ systemctl disable ofono bluetooth wpa_supplicant avahi-daemon atd neard nfs-stat
 |------|------|
 | `dnsmasq.service` | 確認 eth1 DHCP server 功能廢棄後停用 |
 | `connman.service` | 確認改用純 `systemd-networkd` 管理後停用 |
-| `firmwared.service` | 確認 ISP / camera firmware 載入不再需要後停用 |
+| `firmwared.service` | 目前尚未驗證停用後是否影響其他硬體流程；確認完全不用 ISP / camera firmware 後再停用 |
 | `crond.service` | 確認 `/etc/cron.d/`、`crontab -l` 均為空後停用 |
 | `psplash*.service` | 若不需要開機 splash 動畫可全數停用，節省 ~0.2s |
 
@@ -155,7 +217,7 @@ systemctl disable ofono bluetooth wpa_supplicant avahi-daemon atd neard nfs-stat
 
 ---
 
-## 三、開機時序參考（優化後）
+## 四、開機時序參考（優化後）
 
 ```
 graphical.target @16.56s
@@ -171,13 +233,15 @@ graphical.target @16.56s
 
 ---
 
-## 四、部署檔案清單
+## 五、部署檔案清單
 
 | 本地路徑 | 遠端路徑 | 說明 |
 |----------|----------|------|
 | `deploy/systemd/pixi-dash.service` | `/etc/systemd/system/pixi-dash.service` | Docker 容器開機啟動 |
 | `deploy/systemd/wait-online-any.conf` | `/etc/systemd/system/systemd-networkd-wait-online.service.d/any.conf` | wait-online 改為 --any 模式 |
 | `deploy/systemd/docker-no-network-online.conf` | `/etc/systemd/system/docker.service.d/no-network-online.conf` | docker 移除 network-online 依賴 |
+
+> 注意：`pixi-dash.service` 本體仍保留 `After=network-online.target`；目前開機時間改善主要來自 `wait-online-any.conf` 與 `docker-no-network-online.conf` 兩個 drop-in。
 
 部署後執行：
 ```bash

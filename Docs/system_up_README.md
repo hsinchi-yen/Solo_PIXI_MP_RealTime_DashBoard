@@ -1,8 +1,9 @@
-# PIXI Modules MP Monitoring DashBOARD — 啟動說明
+# PIXI Modules MP Monitoring DashBOARD — 啟動與部署說明
 
-> 本專案有兩個使用情境：
+> 本專案有三個使用情境：
 > - **開發環境（Windows PC）**：直接用 Python 或 Docker Desktop 執行。
-> - **正式部署（IMX8MP 設備，Linux）**：用純 Docker 指令在設備上執行。
+> - **單次部署 / 建容器（IMX8MP 設備，Linux）**：用 Docker 建置 image 與建立容器。
+> - **正式量產啟動（IMX8MP 設備，Linux）**：由 `systemd` 負責在開機時自動啟動 `pixi-dash` 容器與 kiosk。
 
 ---
 
@@ -67,6 +68,7 @@ docker-compose down
 > **架構說明**
 > - `app/`（後端程式碼）與 `frontend/`（HTML / JS / CSS）是**建置時 bake 進 image**，不是 bind mount。
 > - 只有 `config/`（設定持久化）、`rawlogs/`（日誌）、NVMe 根目錄 是執行時掛載的。
+> - **Docker 的角色是建立 image 與容器**；正式開機自動啟動請看下方「方法四：systemd 正式開機自啟」。
 > - 更新程式碼有兩個途徑：
 >   - **快速熱更新**（測試用）：`docker cp` + `docker restart`，不需重建 image。
 >   - **正式更新**：`git pull` → `docker build` → 重新部署，讓新版永久生效。
@@ -143,6 +145,7 @@ cd /home/Solo_PIXI_MP_RealTime_DashBoard
 docker cp app/main.py      pixi-dash:/app/app/main.py
 docker cp frontend/dashboard.js pixi-dash:/app/frontend/dashboard.js
 docker cp frontend/index.html   pixi-dash:/app/frontend/index.html
+docker cp frontend/style.css    pixi-dash:/app/frontend/style.css
 
 # 3. 重啟容器讓後端 Python 重新載入
 docker restart pixi-dash
@@ -153,6 +156,111 @@ curl -s http://localhost:8080/ | grep -o 'dashboard.js?v=[0-9]*'
 
 > `frontend/` 檔案（JS / HTML / CSS）不需要重啟即可驗證，瀏覽器強制重整（Ctrl+Shift+R）即可；
 > `app/main.py` 等 Python 後端修改**必須** `docker restart` 才會生效。
+
+### 3-5 目前正式部署模式
+
+目前 IMX8MP 正式機的實際運作模式如下：
+
+1. 先用 `docker build` 建立 `pixi-dashboard` image。
+2. 用 `docker run` 建立名為 `pixi-dash` 的容器，保留必要 volume 掛載。
+3. 開機時不再手動下 `docker start pixi-dash`，而是交由 `systemd` 的 `pixi-dash.service` 自動帶起。
+4. `chromium-kiosk.service` 會等待 `pixi-dash.service`，再開啟本機 `http://localhost:8080`。
+
+也就是說：
+- `Docker` 負責 image / container lifecycle
+- `systemd` 負責 boot-time orchestration
+- `Chromium kiosk` 負責最終顯示 UI
+
+---
+
+## 方法四：systemd 正式開機自啟（IMX8MP 推薦）
+
+> 正式機請採用這個方式，避免每次重開都要手動啟動 Docker 容器。
+
+### 4-1 安裝 systemd unit 與 boot 優化 drop-ins
+
+```bash
+cd /home/Solo_PIXI_MP_RealTime_DashBoard
+
+sudo mkdir -p /etc/systemd/system/systemd-networkd-wait-online.service.d
+sudo mkdir -p /etc/systemd/system/docker.service.d
+
+sudo cp deploy/systemd/pixi-dash.service /etc/systemd/system/pixi-dash.service
+sudo cp deploy/systemd/wait-online-any.conf /etc/systemd/system/systemd-networkd-wait-online.service.d/any.conf
+sudo cp deploy/systemd/docker-no-network-online.conf /etc/systemd/system/docker.service.d/no-network-online.conf
+
+sudo systemctl daemon-reload
+sudo systemctl enable pixi-dash.service
+sudo systemctl restart systemd-networkd-wait-online.service
+sudo systemctl restart docker.service
+sudo systemctl restart pixi-dash.service
+```
+
+### 4-2 驗證自啟狀態
+
+```bash
+systemctl status pixi-dash.service --no-pager
+systemctl status docker.service --no-pager
+systemctl cat systemd-networkd-wait-online.service
+systemctl show docker.service -p After -p Wants
+docker ps --filter name=pixi-dash
+curl -sS -m 5 http://127.0.0.1:8080/api/snapshot | head -c 300 && echo
+```
+
+### 4-3 驗證開機時間
+
+```bash
+systemd-analyze time
+systemd-analyze blame | head -10
+systemd-analyze critical-chain --no-pager | head -30
+```
+
+目前已驗證結果：
+- 開機由原本超過 2 分鐘，降至約 20 秒
+- `docker.service` 約 1.7 秒完成
+- `systemd-networkd-wait-online.service` 不再卡 120 秒 timeout
+
+---
+
+## 前端 UI 功能對照（目前版本）
+
+### Header 區
+
+- WO 下拉選單 + Refresh
+- 自訂 WO 輸入框
+- QTY 目標值
+- `Save` / `Clear` / `Edit`
+- `DB Settings`、`Upload`、`Auto Upload`
+- ETH0 / CPU / RAM / TEMP 系統指標
+- 日期與時鐘
+
+### OPS Strip
+
+- `MODE`：顯示 `LOCAL` / `REMOTE`
+- `WO`：目前工單
+- `DB`：顯示 `READY` / `OFFLINE` / `LOCKED`
+- `WO ROOT`：工單根目錄是否存在
+- `RAWLOGS`：目前 rawlogs 根目錄是否存在
+
+### Main 區
+
+- KPI：TOTAL / PASS / FAIL / STOP / YIELD / COMPLETION / RETEST RATE
+- Hourly Completion 圖表
+- Result Distribution 圖表
+- Recent Tests 表格
+- Station / Result / Keyword 過濾
+- Anomaly Priority 排序開關
+
+### Footer 區
+
+- `WO PATH` 顯示與燈號
+- `LOG DIR` 路徑輸入
+- `Browse` 目錄瀏覽
+- `WO Root` / `Rawlogs` 快捷切換
+- `▶ Apply`：套用新的 log dir 並重建 watcher
+- `Sweep`：刪除目前 log dir 下的 `.txt`
+- SSE 連線燈號
+- Day / Night Theme 切換
 
 #### ▶ 完整重建 image 並重新部署（正式上線）
 
@@ -246,9 +354,12 @@ curl -s 'http://localhost:8080/' | grep -o 'dashboard.js?v=[0-9]*'
 | WO 下拉是空的 | NVMe 未掛載進容器 | 確認 `-v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw` 存在；執行 `curl localhost:8080/api/work-orders?refresh=1` 驗證 |
 | WO PATH 燈號顯示 MISSING 但 Upload 正常 | 舊版 `path_health` 未用 `_find_wo_dir()` | 更新 `app/main.py` 並 `docker cp` + `docker restart` |
 | SCP 更新後畫面沒變 | `app/` 與 `frontend/` 是 baked image，SCP 只更新 host 端 | 用 `docker cp` 注入容器，再 `docker restart` |
+| 改了 `style.css` 但畫面沒變 | CSS 仍在舊容器或瀏覽器快取 | `docker cp frontend/style.css pixi-dash:/app/frontend/style.css` 後強制重整瀏覽器 |
 | Auto Upload 按鈕顏色與狀態不同步 | 舊版混用 style.color 與 CSS class | 更新 `frontend/dashboard.js` 並 `docker cp` + 重整瀏覽器 |
 | SSE 連線燈號一直紅色 | 伺服器未啟動或防火牆阻擋 | 確認容器正常運行，檢查防火牆設定 |
-| 遠端連入控制項反灰 | 安全機制：修改權限僅限 localhost | 在設備本機瀏覽器開啟 `http://localhost:8080` 操作 |
+| 遠端連入後 WO / QTY / LOG DIR 無法修改 | 安全機制：mission / browse / log sweep 僅允許 localhost | 在設備本機瀏覽器開啟 `http://localhost:8080` 操作 |
+| 遠端連入後可用 Upload 但不能改 WO / QTY | 權限設計如此：DB / Upload 允許 localhost 與 LAN；mission 設定僅 localhost | DB 相關功能可遠端用；工單與 log dir 請在本機操作 |
+| 重開機後容器沒自動起來 | 未安裝 `pixi-dash.service` 或未 daemon-reload | 依照「方法四」重新部署 systemd unit 與 drop-ins |
 
 ---
 
@@ -260,4 +371,4 @@ python -m pytest tests/ -v
 
 ---
 
-*最後更新：2026-05-07*
+*最後更新：2026-05-08*
