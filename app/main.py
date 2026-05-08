@@ -7,6 +7,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
+import socket
+import struct
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -151,6 +153,9 @@ _observer = None
 _scan_task: asyncio.Task | None = None
 _work_order_cache: list[str] = []
 _work_order_cache_ts: float = 0.0
+
+# 系統狀態快取 (供 CPU 計算使用)
+_last_cpu_stats = None
 
 
 def _stop_observer(observer, timeout: float = 3.0) -> None:
@@ -686,4 +691,99 @@ async def trigger_auto_upload(request: Request, body: dict):
 @app.get("/api/upload-status")
 async def get_upload_status(request: Request):
     return JSONResponse(uploader_manager.get_status())
+
+
+@app.get("/api/system-metrics")
+async def get_system_metrics(request: Request):
+    global _last_cpu_stats
+    metrics = {
+        "eth0_ip": "N/A",
+        "cpu_usage": "0%",
+        "free_mem": "N/A",
+        "cpu_temp": "N/A"
+    }
+
+    # 1. 取得 eth0 IP
+    try:
+        import fcntl
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        ifname = b'eth0'
+        # SIOCGIFADDR = 0x8915
+        ip_bytes = fcntl.ioctl(
+            s.fileno(),
+            0x8915,
+            struct.pack('256s', ifname[:15])
+        )[20:24]
+        metrics["eth0_ip"] = socket.inet_ntoa(ip_bytes)
+    except Exception:
+        metrics["eth0_ip"] = "N/A"
+
+    # 2. 計算 CPU 使用率 (讀取 /proc/stat)
+    try:
+        stat_path = '/host/proc/stat' if os.path.exists('/host/proc/stat') else '/proc/stat'
+        with open(stat_path, 'r') as f:
+            lines = f.readlines()
+        
+        cpu_line = next((line for line in lines if line.startswith('cpu ')), None)
+        if cpu_line:
+            parts = cpu_line.split()
+            # user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice
+            # idle_time = idle + iowait
+            # non_idle_time = user + nice + system + irq + softirq + steal
+            # total_time = idle_time + non_idle_time
+            idle_time = float(parts[4]) + float(parts[5])
+            non_idle_time = float(parts[1]) + float(parts[2]) + float(parts[3]) + float(parts[6]) + float(parts[7]) + float(parts[8])
+            total_time = idle_time + non_idle_time
+
+            if _last_cpu_stats:
+                prev_idle, prev_total = _last_cpu_stats
+                totald = total_time - prev_total
+                idled = idle_time - prev_idle
+                
+                if totald > 0:
+                    cpu_usage = 100.0 * (totald - idled) / totald
+                    metrics["cpu_usage"] = f"{cpu_usage:.1f}%"
+            
+            _last_cpu_stats = (idle_time, total_time)
+    except Exception:
+        metrics["cpu_usage"] = "N/A"
+
+    # 3. 取得 Free Memory (讀取 /proc/meminfo)
+    try:
+        meminfo_path = '/host/proc/meminfo' if os.path.exists('/host/proc/meminfo') else '/proc/meminfo'
+        with open(meminfo_path, 'r') as f:
+            meminfo = f.read()
+            
+        mem_available_line = next((line for line in meminfo.splitlines() if line.startswith('MemAvailable:')), None)
+        if mem_available_line:
+            kb = int(mem_available_line.split()[1])
+            if kb > 1024 * 1024:
+                metrics["free_mem"] = f"{kb / (1024 * 1024):.1f}G"
+            else:
+                metrics["free_mem"] = f"{kb / 1024:.0f}M"
+        else:
+            # Fallback to MemFree + Buffers + Cached if MemAvailable is missing
+            mem_free = next((int(line.split()[1]) for line in meminfo.splitlines() if line.startswith('MemFree:')), 0)
+            buffers = next((int(line.split()[1]) for line in meminfo.splitlines() if line.startswith('Buffers:')), 0)
+            cached = next((int(line.split()[1]) for line in meminfo.splitlines() if line.startswith('Cached:')), 0)
+            kb = mem_free + buffers + cached
+            if kb > 0:
+                if kb > 1024 * 1024:
+                    metrics["free_mem"] = f"{kb / (1024 * 1024):.1f}G"
+                else:
+                    metrics["free_mem"] = f"{kb / 1024:.0f}M"
+    except Exception:
+        metrics["free_mem"] = "N/A"
+
+    # 4. 取得 CPU 溫度
+    try:
+        temp_path = '/host/sys/devices/virtual/thermal/thermal_zone0/temp' if os.path.exists('/host/sys/devices/virtual/thermal/thermal_zone0/temp') else '/sys/devices/virtual/thermal/thermal_zone0/temp'
+        with open(temp_path, 'r') as f:
+            temp_raw = f.read().strip()
+            temp_c = float(temp_raw) / 1000.0
+            metrics["cpu_temp"] = f"{temp_c:.1f}°C"
+    except Exception:
+        metrics["cpu_temp"] = "N/A"
+
+    return JSONResponse(metrics)
 

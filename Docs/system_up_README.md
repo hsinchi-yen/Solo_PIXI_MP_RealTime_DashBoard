@@ -89,16 +89,18 @@ docker build -t pixi-dashboard .
 ```bash
 docker run -d \
   --restart unless-stopped \
-  -p 8080:8080 \
+  --network host \
   -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   -v /run/media/nvme0n1p1:/nvme0n1p1:rw \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
   --name pixi-dash \
   pixi-dashboard
 ```
 
-> **四個 `-v` 都必須掛載。**
+> **所有的 `-v` 都必須掛載。**
 >
 > | host 路徑 | 容器路徑 | 用途 |
 > |-----------|----------|------|
@@ -106,6 +108,10 @@ docker run -d \
 > | `/run/media/nvme0n1p1/rawlogs` | `/app/rawlogs` | App 預設 log 掃描路徑 |
 > | `/run/media/nvme0n1p1` | `/run/media/nvme0n1p1` | WO 工單目錄掃描根目錄 |
 > | `/run/media/nvme0n1p1` | `/nvme0n1p1` | 路徑別名（後端 browse API 白名單） |
+> | `/proc` | `/host/proc` | 供系統資源監控抓取實體機資訊 (CPU/RAM) |
+> | `/sys` | `/host/sys` | 供系統資源監控抓取實體機資訊 (溫度) |
+>
+> 註：採用 `--network host` 即可存取主機的實體網卡，無需 `-p 8080:8080` 映射。
 
 ### 3-3 維運操作
 
@@ -161,14 +167,16 @@ git pull
 # 3. 重新建置 image
 docker build -t pixi-dashboard .
 
-# 4. 重新啟動容器（含四個掛載）
+# 4. 重新啟動容器（含掛載）
 docker run -d \
   --restart unless-stopped \
-  -p 8080:8080 \
+  --network host \
   -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   -v /run/media/nvme0n1p1:/nvme0n1p1:rw \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
   --name pixi-dash \
   pixi-dashboard
 ```
@@ -183,11 +191,13 @@ git pull
 docker build -t pixi-dashboard .
 docker run -d \
   --restart unless-stopped \
-  -p 8080:8080 \
+  --network host \
   -v /home/Solo_PIXI_MP_RealTime_DashBoard/config:/app/config:rw \
   -v /run/media/nvme0n1p1/rawlogs:/app/rawlogs:rw \
   -v /run/media/nvme0n1p1:/run/media/nvme0n1p1:rw \
   -v /run/media/nvme0n1p1:/nvme0n1p1:rw \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
   --name pixi-dash \
   pixi-dashboard
 ```

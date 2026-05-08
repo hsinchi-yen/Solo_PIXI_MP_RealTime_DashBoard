@@ -12,7 +12,8 @@ import paramiko
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLineEdit, QLabel,
                              QFileDialog, QTextEdit, QFrame, QSpinBox,
-                             QMessageBox, QStyle, QSizePolicy, QComboBox)
+                             QMessageBox, QStyle, QSizePolicy, QComboBox,
+                             QGraphicsOpacityEffect)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QSettings, QTimer
 from PyQt5.QtGui import QIcon, QFont
 
@@ -28,16 +29,23 @@ def get_resource_path(*parts):
 
 
 APP_ICON_PATH = get_resource_path('build_assets', 'icons', 'solo_pixi_splitter.ico')
+TN_LOGO_PATH  = get_resource_path('tn_log.png')
 DEFAULT_POLL_INTERVAL = 60
 DEFAULT_RSYNC_PATH = 'root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/'
 STATION_OPTIONS = ['10', '20', '30', '40', '50', '60', '70', '80']
+
+# ── UI size tokens ────────────────────────────────────────────
+_H_INPUT   = 24   # standard input / combo height
+_H_BTN     = 26   # header action button height
+_H_MINI    = 18   # minor clear / inline button height
+_BROWSE_SZ = 24   # square browse-icon button side
 
 # ─────────────────────────────────────────────────────────────
 #  Windows 11 Fluent Design stylesheet
 #  Palette: #202020 titlebar · #0078D4 accent · #F3F3F3 bg
 #           #107C10 success · #C50F1F error · #CA5010 warning
 # ─────────────────────────────────────────────────────────────
-STYLESHEET = """
+STYLESHEET_LIGHT = """
 QWidget {
     font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
     font-size: 11px;
@@ -78,6 +86,22 @@ QLabel#dotWatching { color: #6CCB5F; font-size: 15px; }
 QLabel#dotBusy     { color: #FCB040; font-size: 15px; }
 QLabel#dotError    { color: #F04747; font-size: 15px; }
 QLabel#dotState    { color: #ABABAB; font-size: 10px; }
+
+/* ── Station ID label in header ── */
+QLabel#stationIdLbl {
+    color: #FCB040;
+    font-size: 11px;
+    font-weight: 600;
+    padding-left: 8px;
+}
+
+/* ── OP panel source summary ── */
+QLabel#srcSummary {
+    color: #7D7D7D;
+    font-size: 9px;
+    font-family: "Consolas", monospace;
+    padding: 0px 4px 2px 33px;
+}
 
 /* ── Config panel — white card ── */
 QFrame#configPanel {
@@ -164,15 +188,15 @@ QPushButton#stop:hover   { background-color: #444444; border-color: #F04747; col
 QPushButton#stop:pressed { background-color: #4C4C4C; }
 QPushButton#stop:disabled { background-color: #2C2C2C; color: #5E5E5E; border-color: #3C3C3C; }
 
-/* ── Upload Stop button ── */
+/* ── Upload Stop button (lives in Upload Feed header) ── */
 QPushButton#uploadStop {
     background-color: #383838;
     color: #FCB040;
     border: 1px solid #CA5010;
     border-radius: 4px;
-    padding: 4px 12px;
+    padding: 2px 8px;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 10px;
 }
 QPushButton#uploadStop:hover   { background-color: #4A3020; border-color: #E06010; color: #FFCF70; }
 QPushButton#uploadStop:pressed { background-color: #5A3820; }
@@ -242,6 +266,16 @@ QTextEdit {
     color: #1A1A1A;
 }
 
+/* ── Log panel title / feed labels ── */
+QLabel#logTitle      { color: #5D5D5D; font-size: 10px; font-weight: 700; }
+QLabel#uploadFeedDot { color: #107C10; font-size: 10px; }
+QLabel#uploadFeedKey { color: #107C10; font-size: 10px; font-weight: 700; }
+QLabel#uploadFeedStat{ color: #5D5D5D; font-size: 10px; }
+QLabel#uploadFeedEta { color: #0078D4; font-size: 10px; font-weight: 600; }
+
+/* ── DST hint ── */
+QLabel#dstHint { color: #5D5D5D; font-size: 9px; padding-left: 33px; }
+
 /* ── Lock & Config Action Buttons ── */
 QPushButton#lockBtn {
     background-color: transparent;
@@ -271,6 +305,209 @@ QLabel#miniStats {
     font-weight: 700;
     padding-left: 8px;
 }
+
+/* ── Theme toggle button (on dark header) ── */
+QPushButton#themeBtn {
+    background-color: #2C2C2C;
+    color: #ABABAB;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    font-size: 14px;
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0px;
+}
+QPushButton#themeBtn:hover   { background-color: #3A3A3A; color: #FFFFFF; border-color: #888888; }
+QPushButton#themeBtn:pressed { background-color: #222222; }
+
+/* ── ComboBox ── */
+QComboBox {
+    border: 1px solid #CECECE;
+    border-radius: 4px;
+    padding: 3px 7px;
+    background: #FDFDFD;
+    color: #1A1A1A;
+}
+QComboBox:hover    { border-color: #9E9E9E; }
+QComboBox:focus    { border-color: #0078D4; }
+QComboBox:disabled { background: #F5F5F5; color: #9D9D9D; border-color: #E8E8E8; }
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #CECECE;
+    selection-background-color: #0078D4;
+    color: #1A1A1A;
+}
+"""
+
+# ─────────────────────────────────────────────────────────────
+#  Dark theme — mirrors STYLESHEET_LIGHT with inverted palette
+#  Palette: #1C1C1C root · #111111 header · #252525 cards
+#           #313131 inputs · #3A9FE8 accent · #E4E4E4 text
+# ─────────────────────────────────────────────────────────────
+STYLESHEET_DARK = """
+QWidget {
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+    font-size: 11px;
+    color: #E4E4E4;
+}
+QMainWindow, QWidget#root { background-color: #1C1C1C; }
+
+/* ── Header ── */
+QFrame#header { background-color: #111111; border-radius: 6px; }
+QLabel#appTitle { color: #FFFFFF; font-size: 15px; font-weight: 600; }
+
+/* ── Collapse / Expand / Theme ── */
+QPushButton#collapseBtn, QPushButton#themeBtn {
+    background-color: #252525;
+    color: #8A8A8A;
+    border: 1px solid #444444;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 14px;
+    min-width: 26px; max-width: 26px;
+    min-height: 26px; max-height: 26px;
+    padding: 0px;
+}
+QPushButton#collapseBtn:hover, QPushButton#themeBtn:hover   { background-color: #3A3A3A; color: #FFFFFF; border-color: #666666; }
+QPushButton#collapseBtn:pressed, QPushButton#themeBtn:pressed { background-color: #1A1A1A; }
+
+QLabel#dotIdle     { color: #5A5A5A; font-size: 15px; }
+QLabel#dotWatching { color: #6CCB5F; font-size: 15px; }
+QLabel#dotBusy     { color: #FCB040; font-size: 15px; }
+QLabel#dotError    { color: #F04747; font-size: 15px; }
+QLabel#dotState    { color: #7A7A7A; font-size: 10px; }
+
+QLabel#stationIdLbl { color: #FCB040; font-size: 11px; font-weight: 600; padding-left: 8px; }
+QLabel#srcSummary   { color: #6A6A6A; font-size: 9px; font-family: "Consolas", monospace; padding: 0px 4px 2px 33px; }
+
+/* ── Config panel ── */
+QFrame#configPanel { background-color: #252525; border: 1px solid #383838; border-radius: 6px; }
+QLabel#rowTag { color: #3A9FE8; font-size: 10px; font-weight: 700; min-width: 28px; max-width: 28px; }
+
+/* ── Inputs ── */
+QLineEdit {
+    border: 1px solid #484848; border-radius: 4px; padding: 3px 7px;
+    background: #313131; selection-background-color: #0078D4; color: #E4E4E4;
+}
+QLineEdit:hover    { border-color: #666666; }
+QLineEdit:focus    { border-color: #3A9FE8; }
+QLineEdit:disabled { background: #272727; color: #525252; border-color: #383838; }
+
+/* ── Browse buttons ── */
+QPushButton#browse {
+    background-color: #313131; color: #C0C0C0; border: 1px solid #484848;
+    border-radius: 4px; padding: 0px;
+    min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px;
+}
+QPushButton#browse:hover   { background-color: #3E3E3E; border-color: #666666; }
+QPushButton#browse:pressed { background-color: #282828; }
+QPushButton#browse:disabled { background: #272727; color: #484848; border-color: #383838; }
+
+/* ── SpinBox ── */
+QSpinBox {
+    border: 1px solid #484848; border-radius: 4px; padding: 3px 4px;
+    background: #313131; min-width: 54px; max-width: 62px; color: #E4E4E4;
+}
+QSpinBox:hover    { border-color: #666666; }
+QSpinBox:focus    { border-color: #3A9FE8; }
+QSpinBox:disabled { background: #272727; color: #525252; border-color: #383838; }
+
+/* ── ComboBox ── */
+QComboBox {
+    border: 1px solid #484848; border-radius: 4px; padding: 3px 7px;
+    background: #313131; color: #E4E4E4;
+}
+QComboBox:hover    { border-color: #666666; }
+QComboBox:focus    { border-color: #3A9FE8; }
+QComboBox:disabled { background: #272727; color: #525252; border-color: #383838; }
+QComboBox QAbstractItemView {
+    background-color: #313131; border: 1px solid #484848;
+    selection-background-color: #0078D4; color: #E4E4E4;
+}
+
+/* ── Start ── */
+QPushButton#start {
+    background-color: #0078D4; color: #FFFFFF; border: none;
+    border-radius: 4px; padding: 4px 12px; font-weight: 600; font-size: 11px;
+}
+QPushButton#start:hover   { background-color: #106EBE; }
+QPushButton#start:pressed { background-color: #005A9E; }
+QPushButton#start:disabled { background-color: #003D6B; color: #5A8AB0; }
+
+/* ── Stop ── */
+QPushButton#stop {
+    background-color: #2E2E2E; color: #C8C8C8; border: 1px solid #484848;
+    border-radius: 4px; padding: 4px 12px; font-weight: 600; font-size: 11px;
+}
+QPushButton#stop:hover   { background-color: #3A3A3A; border-color: #F04747; color: #FFFFFF; }
+QPushButton#stop:pressed { background-color: #404040; }
+QPushButton#stop:disabled { background-color: #222222; color: #484848; border-color: #333333; }
+
+/* ── Upload Stop ── */
+QPushButton#uploadStop {
+    background-color: #2E2E2E; color: #FCB040; border: 1px solid #CA5010;
+    border-radius: 4px; padding: 2px 8px; font-weight: 600; font-size: 10px;
+}
+QPushButton#uploadStop:hover   { background-color: #4A3020; border-color: #E06010; color: #FFCF70; }
+QPushButton#uploadStop:pressed { background-color: #5A3820; }
+QPushButton#uploadStop:disabled { background-color: #222222; color: #484848; border-color: #333333; }
+
+/* ── SSH Test ── */
+QPushButton#sshTest {
+    background-color: #313131; color: #C0C0C0; border: 1px solid #484848;
+    border-radius: 4px; padding: 0px;
+    min-width: 52px; max-width: 52px; min-height: 24px; max-height: 24px;
+    font-size: 10px; font-weight: 600;
+}
+QPushButton#sshTest:hover   { background-color: #3E3E3E; border-color: #666666; }
+QPushButton#sshTest:pressed { background-color: #282828; }
+QPushButton#sshTest:disabled { background: #272727; color: #484848; border-color: #383838; }
+
+/* ── SSH LED ── */
+QLabel#sshLedIdle { color: #5A5A5A; font-size: 12px; min-width: 14px; max-width: 14px; }
+QLabel#sshLedOk   { color: #6CCB5F; font-size: 12px; min-width: 14px; max-width: 14px; }
+QLabel#sshLedFail { color: #F04747; font-size: 12px; min-width: 14px; max-width: 14px; }
+
+/* ── Status strip ── */
+QFrame#statusStrip { background-color: #252525; border: 1px solid #383838; border-radius: 5px; }
+QLabel#statusKey { color: #7A7A7A; font-size: 10px; }
+QLabel#statusVal { color: #E4E4E4; font-size: 11px; font-weight: 600; }
+QLabel#badgeOk   { color: #6CCB5F; font-weight: 700; font-size: 11px; }
+QLabel#badgeFail { color: #F04747; font-weight: 700; font-size: 11px; }
+QLabel#sep       { color: #484848; font-size: 11px; padding: 0 2px; }
+
+/* ── Log panels ── */
+QFrame#logPanel { background: #252525; border: 1px solid #383838; border-radius: 6px; }
+QTextEdit {
+    border: none; background: transparent; padding: 2px 4px;
+    selection-background-color: #0078D4; color: #C8C8C8;
+}
+
+QLabel#logTitle      { color: #7A7A7A; font-size: 10px; font-weight: 700; }
+QLabel#uploadFeedDot { color: #6CCB5F; font-size: 10px; }
+QLabel#uploadFeedKey { color: #6CCB5F; font-size: 10px; font-weight: 700; }
+QLabel#uploadFeedStat{ color: #7A7A7A; font-size: 10px; }
+QLabel#uploadFeedEta { color: #3A9FE8; font-size: 10px; font-weight: 600; }
+QLabel#dstHint       { color: #6A6A6A; font-size: 9px; padding-left: 33px; }
+
+/* ── Lock & Config Buttons ── */
+QPushButton#lockBtn {
+    background-color: transparent; color: #8A8A8A;
+    border: 1px solid transparent; border-radius: 4px;
+    font-size: 11px; font-weight: 600; padding: 2px 6px;
+}
+QPushButton#lockBtn:hover { background-color: #3A3A3A; color: #FFFFFF; }
+
+QPushButton#configBtn {
+    background-color: #313131; color: #E4E4E4; border: 1px solid #484848;
+    border-radius: 4px; padding: 2px 8px; font-weight: 600;
+}
+QPushButton#configBtn:hover   { background-color: #3E3E3E; border-color: #666666; }
+QPushButton#configBtn:pressed { background-color: #282828; }
+
+QLabel#miniStats { color: #6CCB5F; font-size: 11px; font-weight: 700; padding-left: 8px; }
 """
 
 # ─────────────────────────────────────────────────────────────
@@ -774,32 +1011,49 @@ class UploadThread(QThread):
         self._stop_flag  = False
         self._done_count = 0
         self._avg_secs   = None  # exponential moving average seconds/file
+        # Persistent SFTP session — keyed by (host, user, remote_dir)
+        self._sftp_cache: dict = {}   # key → (ssh_client, sftp)
 
     def stop(self):
         self._stop_flag = True
 
     def run(self):
         self._stop_flag = False
-        while not self._stop_flag:
+        try:
+            while not self._stop_flag:
+                try:
+                    filename, out_path, dest_override = self._queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+
+                dest = dest_override or self.dest_dir
+                t0 = time.time()
+                self._upload_file(filename, out_path, dest)
+                elapsed = time.time() - t0
+
+                self._avg_secs = (elapsed if self._avg_secs is None
+                                  else 0.7 * self._avg_secs + 0.3 * elapsed)
+                self._done_count += 1
+                remaining = self._queue.qsize()
+                self.queue_stats.emit(self._done_count, remaining)
+                eta_str = (f"~{self._fmt_eta(remaining * self._avg_secs)}"
+                           if remaining > 0 else "—")
+                self.eta_updated.emit(eta_str)
+                self._queue.task_done()
+        finally:
+            self._close_all_sftp()
+
+    def _close_all_sftp(self):
+        for ssh_client, sftp in self._sftp_cache.values():
             try:
-                filename, out_path, dest_override = self._queue.get(timeout=1.0)
-            except queue.Empty:
-                continue
-
-            dest = dest_override or self.dest_dir
-            t0 = time.time()
-            self._upload_file(filename, out_path, dest)
-            elapsed = time.time() - t0
-
-            self._avg_secs = (elapsed if self._avg_secs is None
-                              else 0.7 * self._avg_secs + 0.3 * elapsed)
-            self._done_count += 1
-            remaining = self._queue.qsize()
-            self.queue_stats.emit(self._done_count, remaining)
-            eta_str = (f"~{self._fmt_eta(remaining * self._avg_secs)}"
-                       if remaining > 0 else "—")
-            self.eta_updated.emit(eta_str)
-            self._queue.task_done()
+                sftp.close()
+            except Exception:
+                pass
+            try:
+                ssh_client.close()
+            except Exception:
+                pass
+        self._sftp_cache.clear()
 
     def _fmt_eta(self, secs):
         if secs < 60:
@@ -813,57 +1067,81 @@ class UploadThread(QThread):
         else:
             self._upload_local(filename, out_path, dest)
 
+    def _get_sftp(self, host, user, remote_dir):
+        """Return a cached (ssh_client, sftp) for this destination, reconnecting on failure."""
+        cache_key = (host, user, remote_dir)
+        if cache_key in self._sftp_cache:
+            ssh_client, sftp = self._sftp_cache[cache_key]
+            # Probe the session with a cheap stat; reconnect if the channel is dead
+            try:
+                sftp.stat('.')
+                return ssh_client, sftp
+            except Exception:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
+                try:
+                    ssh_client.close()
+                except Exception:
+                    pass
+                del self._sftp_cache[cache_key]
+
+        ssh_dir   = os.path.expanduser("~/.ssh")
+        key_names = ["id_ed25519", "id_ecdsa", "id_rsa", "id_dsa"]
+        key_paths = [os.path.join(ssh_dir, k) for k in key_names
+                     if os.path.exists(os.path.join(ssh_dir, k))]
+
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh_client.connect(hostname=host, username=user, password='',
+                               timeout=10, look_for_keys=False, allow_agent=False)
+        except paramiko.AuthenticationException:
+            if key_paths:
+                ssh_client.close()
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh_client.connect(hostname=host, username=user, timeout=10,
+                                   key_filename=key_paths, look_for_keys=True,
+                                   allow_agent=True)
+            else:
+                raise
+
+        sftp = ssh_client.open_sftp()
+        # Ensure remote directory exists
+        try:
+            sftp.stat(remote_dir)
+        except FileNotFoundError:
+            try:
+                sftp.mkdir(remote_dir)
+            except Exception:
+                pass
+
+        self._sftp_cache[cache_key] = (ssh_client, sftp)
+        return ssh_client, sftp
+
     def _upload_sftp(self, filename, out_path, dest):
         user, host, remote_dir = parse_remote_path(dest)
         if not user or not host:
             self.upload_failed.emit(filename, f"Invalid remote path: {dest}")
             return
-        ssh_dir = os.path.expanduser("~/.ssh")
-        key_names = ["id_ed25519", "id_ecdsa", "id_rsa", "id_dsa"]
-        key_paths = [os.path.join(ssh_dir, k) for k in key_names
-                     if os.path.exists(os.path.join(ssh_dir, k))]
-        ssh_client = None
         try:
-            ssh_client = paramiko.SSHClient()
-            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            try:
-                ssh_client.connect(hostname=host, username=user, password='',
-                                   timeout=10, look_for_keys=False, allow_agent=False)
-            except paramiko.AuthenticationException:
-                if key_paths:
-                    ssh_client.close()
-                    ssh_client = paramiko.SSHClient()
-                    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                    ssh_client.connect(hostname=host, username=user, timeout=10,
-                                       key_filename=key_paths, look_for_keys=True,
-                                       allow_agent=True)
-                else:
-                    raise
-            sftp = ssh_client.open_sftp()
-            try:
-                sftp.stat(remote_dir)
-            except FileNotFoundError:
-                try:
-                    sftp.mkdir(remote_dir)
-                except Exception:
-                    pass
+            _, sftp = self._get_sftp(host, user, remote_dir)
             remote_file = remote_dir.rstrip('/') + '/' + filename
             try:
                 sftp.stat(remote_file)  # already exists → skip
             except FileNotFoundError:
                 sftp.put(out_path, remote_file)
                 self.file_uploaded.emit(filename)
-            sftp.close()
         except paramiko.AuthenticationException:
             self.upload_failed.emit(filename, "SSH auth failed")
+            # Drop cached session so next attempt reconnects clean
+            self._sftp_cache.pop((host, user, remote_dir), None)
         except Exception as e:
             self.upload_failed.emit(filename, f"SFTP error: {e}")
-        finally:
-            if ssh_client:
-                try:
-                    ssh_client.close()
-                except Exception:
-                    pass
+            # Drop session on any transport error — it may be stale
+            self._sftp_cache.pop((host, user, remote_dir), None)
 
     def _upload_local(self, filename, out_path, dest):
         try:
@@ -890,14 +1168,16 @@ class RealtimeSplitterApp(QMainWindow):
         self._seen_files     = set()
         self._session_written = 0
         self._session_synced  = 0
-        self._is_locked       = True  # OP mode by default
-        
-        # SSH LED breathing animation
-        self._ssh_led_timer = QTimer()
+        self._is_locked       = False  # ENG mode by default; overridden by saved setting
+        self._dark_mode       = False
+
+        # SSH LED breathing animation (effect object set in _mk_eng_panel)
+        self._ssh_led_effect    = None
+        self._ssh_led_timer     = QTimer()
         self._ssh_led_timer.timeout.connect(self._animate_ssh_led)
-        self._ssh_led_opacity = 1.0
-        self._ssh_led_direction = -1  # -1 for fade out, 1 for fade in
-        self._ssh_led_state = "idle"  # idle, ok, fail
+        self._ssh_led_opacity   = 1.0
+        self._ssh_led_direction = -1
+        self._ssh_led_state     = "idle"
         
         self._initUI()
         QTimer.singleShot(800, self._auto_ssh_test)  # auto-test after UI settles
@@ -909,9 +1189,10 @@ class RealtimeSplitterApp(QMainWindow):
         self.setMinimumSize(480, 297)
         self.setMaximumSize(960, 800)
         self.resize(720, 600)
-        self.setStyleSheet(STYLESHEET)
-        if os.path.exists(APP_ICON_PATH):
-            self.setWindowIcon(QIcon(APP_ICON_PATH))
+        self.setStyleSheet(STYLESHEET_LIGHT)
+        _icon = TN_LOGO_PATH if os.path.exists(TN_LOGO_PATH) else APP_ICON_PATH
+        if os.path.exists(_icon):
+            self.setWindowIcon(QIcon(_icon))
 
         root = QWidget()
         root.setObjectName("root")
@@ -928,8 +1209,8 @@ class RealtimeSplitterApp(QMainWindow):
         lay.addWidget(self._op_frame)
         lay.addWidget(self._eng_frame)
         lay.addWidget(self._status_frame)
-        lay.addWidget(self._log_frame, stretch=1)
-        lay.addWidget(self._upload_log_frame)
+        lay.addWidget(self._log_frame, stretch=3)
+        lay.addWidget(self._upload_log_frame, stretch=1)
 
     def _mk_header(self):
         frame = QFrame()
@@ -938,25 +1219,6 @@ class RealtimeSplitterApp(QMainWindow):
         h = QHBoxLayout(frame)
         h.setContentsMargins(10, 0, 8, 0)
         h.setSpacing(6)
-
-        # ── TN Logo badge (far left of header) ──
-        self.tn_badge = QLabel()
-        self.tn_badge.setAlignment(Qt.AlignCenter)
-        self.tn_badge.setFixedSize(30, 26)
-        _logo_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tn_log.png')
-        if getattr(sys, 'frozen', False):
-            _logo_file = os.path.join(os.path.dirname(sys.executable), 'tn_log.png')
-        if os.path.exists(_logo_file):
-            from PyQt5.QtGui import QPixmap
-            _pm = QPixmap(_logo_file).scaled(30, 26, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.tn_badge.setPixmap(_pm)
-            self.tn_badge.setStyleSheet("background: transparent; border: none;")
-        else:
-            self.tn_badge.setText("TN")
-            self.tn_badge.setStyleSheet(
-                "background-color: #0078D4; color: #FFFFFF; font-weight: 800;"
-                " border-radius: 4px; font-size: 12px; font-family: Arial;"
-            )
 
         self._dot = QLabel("●")
         self._dot.setObjectName("dotIdle")
@@ -972,9 +1234,7 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_lock.clicked.connect(self._toggle_lock)
 
         self._station_id_lbl = QLabel("")
-        self._station_id_lbl.setStyleSheet(
-            "color: #FCB040; font-size: 11px; font-weight: 600; padding-left: 8px;"
-        )
+        self._station_id_lbl.setObjectName("stationIdLbl")
 
         self._lbl_mini_stats = QLabel("")
         self._lbl_mini_stats.setObjectName("miniStats")
@@ -982,20 +1242,16 @@ class RealtimeSplitterApp(QMainWindow):
 
         self.btn_start = QPushButton("▶  Start")
         self.btn_start.setObjectName("start")
-        self.btn_start.setFixedHeight(26)
+        self.btn_start.setFixedHeight(_H_BTN)
         self.btn_start.clicked.connect(self.start_watching)
 
         self.btn_stop = QPushButton("■  Stop")
         self.btn_stop.setObjectName("stop")
-        self.btn_stop.setFixedHeight(26)
+        self.btn_stop.setFixedHeight(_H_BTN)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_watching)
 
-        self.btn_upload_stop = QPushButton("⏹  Upload Stop")
-        self.btn_upload_stop.setObjectName("uploadStop")
-        self.btn_upload_stop.setFixedHeight(26)
-        self.btn_upload_stop.setEnabled(False)
-        self.btn_upload_stop.clicked.connect(self._stop_upload)
+        # btn_upload_stop is created in _mk_upload_log and placed in the Upload Feed header
 
         self.btn_collapse = QPushButton("−")
         self.btn_collapse.setObjectName("collapseBtn")
@@ -1010,9 +1266,13 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_expand.setVisible(False)
         self.btn_expand.clicked.connect(self._expand_ui)
 
+        self._btn_theme = QPushButton("🌙")
+        self._btn_theme.setObjectName("themeBtn")
+        self._btn_theme.setFixedSize(26, 26)
+        self._btn_theme.setToolTip("切換 深色 / 淺色 主題")
+        self._btn_theme.clicked.connect(self._toggle_theme)
+
         # Build Layout Sequence
-        h.addWidget(self.tn_badge)
-        h.addSpacing(4)
         h.addWidget(self._dot)
         h.addWidget(self._dot_state)
         h.addSpacing(4)
@@ -1024,19 +1284,79 @@ class RealtimeSplitterApp(QMainWindow):
         h.addSpacing(6)
         h.addWidget(self.btn_start)
         h.addWidget(self.btn_stop)
-        h.addWidget(self.btn_upload_stop)
         h.addSpacing(6)
+        h.addWidget(self._btn_theme)
+        h.addSpacing(4)
         h.addWidget(self.btn_collapse)
         h.addWidget(self.btn_expand)
         return frame
 
-    def _mk_config_panels(self):
+    def _mk_op_panel(self):
+        def row(tag, widget):
+            h = QHBoxLayout()
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(5)
+            lbl = QLabel(tag)
+            lbl.setObjectName("rowTag")
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            h.addWidget(lbl)
+            h.addWidget(widget, stretch=1)
+            return h
+
+        op_frame = QFrame()
+        op_frame.setObjectName("configPanel")
+        outer = QHBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        op_frame.setLayout(outer)
+        inner = QWidget()
+        outer.addWidget(inner)
+        lay = QVBoxLayout(inner)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
+
+        # Work Order
+        self.wo_input = QLineEdit()
+        self.wo_input.setPlaceholderText("Work Order …  e.g. 5101-260129012")
+        self.wo_input.setFixedHeight(_H_INPUT)
+        self.wo_input.setToolTip(
+            "Work order — creates [WO]\\ subfolder with WO-prefixed files\n"
+            "Format: {WO}_{date}_{time}_{MAC1}_{MAC2}_{result}.txt\n"
+            "Also uploads to same level as rawlogs on remote"
+        )
+        self.wo_input.setClearButtonEnabled(True)
+        lay.addLayout(row("WOU", self.wo_input))
+
+        # Station
+        self.station_combo = QComboBox()
+        self.station_combo.addItems(STATION_OPTIONS)
+        self.station_combo.setFixedHeight(_H_INPUT)
+        self.station_combo.setToolTip("Select test station ID")
+        self.station_combo.currentIndexChanged.connect(self._update_station_display)
+
+        h_sta = QHBoxLayout()
+        h_sta.setContentsMargins(0, 0, 0, 0)
+        h_sta.setSpacing(5)
+        lbl_sta = QLabel("STA")
+        lbl_sta.setObjectName("rowTag")
+        lbl_sta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        h_sta.addWidget(lbl_sta)
+        h_sta.addWidget(self.station_combo, stretch=1)
+        lay.addLayout(h_sta)
+
+        # Context summary — lets operators confirm settings without opening Eng mode
+        self._lbl_src_summary = QLabel("—")
+        self._lbl_src_summary.setObjectName("srcSummary")
+        lay.addWidget(self._lbl_src_summary)
+
+        return op_frame
+
+    def _mk_eng_panel(self):
         def browse_btn(slot, icon_key=QStyle.SP_DirOpenIcon):
             b = QPushButton()
             b.setObjectName("browse")
             b.setIcon(self.style().standardIcon(icon_key))
             b.setIconSize(QSize(13, 13))
-            b.setFixedSize(24, 24)
+            b.setFixedSize(_BROWSE_SZ, _BROWSE_SZ)
             b.clicked.connect(slot)
             return b
 
@@ -1052,91 +1372,49 @@ class RealtimeSplitterApp(QMainWindow):
             if btn is not None:
                 h.addWidget(btn)
             else:
-                h.addSpacing(29)  # align with rows that have browse buttons
+                h.addSpacing(29)
             return h
 
-        # --- OP Panel ---
-        op_frame = QFrame()
-        op_frame.setObjectName("configPanel")
-        grid_op = QHBoxLayout()
-        grid_op.setContentsMargins(0, 0, 0, 0)
-        op_frame.setLayout(grid_op)
-        inner_op = QWidget()
-        grid_op.addWidget(inner_op)
-        lay_op = QVBoxLayout(inner_op)
-        lay_op.setContentsMargins(8, 8, 8, 8)
-        lay_op.setSpacing(8)
-
-        # Work Order number
-        self.wo_input = QLineEdit()
-        self.wo_input.setPlaceholderText("Work Order …  e.g. 5101-260129012")
-        self.wo_input.setFixedHeight(24)
-        self.wo_input.setToolTip(
-            "Work order — creates [WO]\\ subfolder with WO-prefixed files\n"
-            "Format: {WO}_{date}_{time}_{MAC1}_{MAC2}_{result}.txt\n"
-            "Also uploads to same level as rawlogs on remote"
-        )
-        self.wo_input.setClearButtonEnabled(True)
-        lay_op.addLayout(row("WOU", self.wo_input))
-
-        # STATION dropdown
-        self.station_combo = QComboBox()
-        self.station_combo.addItems(STATION_OPTIONS)
-        self.station_combo.setFixedHeight(24)
-        self.station_combo.setToolTip("Select test station ID")
-        self.station_combo.currentIndexChanged.connect(self._update_station_display)
-        
-        h_sta = QHBoxLayout()
-        h_sta.setContentsMargins(0, 0, 0, 0)
-        h_sta.setSpacing(5)
-        lbl_sta = QLabel("STA")
-        lbl_sta.setObjectName("rowTag")
-        lbl_sta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        h_sta.addWidget(lbl_sta)
-        h_sta.addWidget(self.station_combo, stretch=1)
-        lay_op.addLayout(h_sta)
-
-        # --- Engineer Panel ---
         eng_frame = QFrame()
         eng_frame.setObjectName("configPanel")
-        grid_eng = QHBoxLayout()
-        grid_eng.setContentsMargins(0, 0, 0, 0)
-        eng_frame.setLayout(grid_eng)
-        inner_eng = QWidget()
-        grid_eng.addWidget(inner_eng)
-        lay_eng = QVBoxLayout(inner_eng)
-        lay_eng.setContentsMargins(8, 8, 8, 8)
-        lay_eng.setSpacing(8)
-        eng_frame.setVisible(False) # Hidden by default (Locked OP mode)
+        outer = QHBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        eng_frame.setLayout(outer)
+        inner = QWidget()
+        outer.addWidget(inner)
+        lay = QVBoxLayout(inner)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
+        eng_frame.setVisible(False)
 
         # SRC
         self.file_input = QLineEdit()
         self.file_input.setPlaceholderText("Log_ALL.txt …")
         self.file_input.setReadOnly(True)
-        self.file_input.setFixedHeight(24)
+        self.file_input.setFixedHeight(_H_INPUT)
         self._btn_src = browse_btn(self.browse_source, QStyle.SP_DialogOpenButton)
-        lay_eng.addLayout(row("SRC", self.file_input, self._btn_src))
+        lay.addLayout(row("SRC", self.file_input, self._btn_src))
 
         # OUT
         self.dir_output_input = QLineEdit()
         self.dir_output_input.setText(
             os.path.join(os.path.expanduser('~'), 'Documents', 'Log_Output'))
-        self.dir_output_input.setFixedHeight(24)
+        self.dir_output_input.setFixedHeight(_H_INPUT)
         self._btn_out = browse_btn(self.browse_output)
-        lay_eng.addLayout(row("OUT", self.dir_output_input, self._btn_out))
+        lay.addLayout(row("OUT", self.dir_output_input, self._btn_out))
 
-        # DST and Interval
+        # DST + interval
         self.dir_dest_input = QLineEdit()
         self.dir_dest_input.setText(DEFAULT_RSYNC_PATH)
         self.dir_dest_input.setPlaceholderText("rsync destination …")
-        self.dir_dest_input.setFixedHeight(24)
+        self.dir_dest_input.setFixedHeight(_H_INPUT)
         self._btn_dst = browse_btn(self.browse_dest)
 
         self.spin_interval = QSpinBox()
         self.spin_interval.setRange(10, 300)
         self.spin_interval.setValue(DEFAULT_POLL_INTERVAL)
         self.spin_interval.setSuffix(" s")
-        self.spin_interval.setFixedHeight(24)
+        self.spin_interval.setFixedHeight(_H_INPUT)
         self.spin_interval.setToolTip("Poll interval (seconds)")
 
         h2 = QHBoxLayout()
@@ -1148,39 +1426,42 @@ class RealtimeSplitterApp(QMainWindow):
         h2.addWidget(lbl_dst)
         h2.addWidget(self.dir_dest_input, stretch=1)
         h2.addWidget(self._btn_dst)
-        
+
         self.btn_ssh_test = QPushButton("Test")
         self.btn_ssh_test.setObjectName("sshTest")
-        self.btn_ssh_test.setFixedHeight(24)
+        self.btn_ssh_test.setFixedHeight(_H_INPUT)
         self.btn_ssh_test.setToolTip("Test SSH connection")
         self.btn_ssh_test.clicked.connect(self._test_ssh_connection)
-        
+
         self._ssh_led = QLabel("●")
         self._ssh_led.setObjectName("sshLedIdle")
         self._ssh_led.setToolTip("SSH connection status")
-        
+        # QGraphicsOpacityEffect for breathing animation — avoids per-frame setStyleSheet
+        self._ssh_led_effect = QGraphicsOpacityEffect()
+        self._ssh_led_effect.setOpacity(1.0)
+        self._ssh_led.setGraphicsEffect(self._ssh_led_effect)
+
         h2.addWidget(self.btn_ssh_test)
         h2.addWidget(self._ssh_led)
         h2.addSpacing(4)
         h2.addWidget(self.spin_interval)
-        lay_eng.addLayout(h2)
+        lay.addLayout(h2)
 
-        # Config Management Row
+        # DST hint
+        hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
+        hint.setObjectName("dstHint")
+        lay.addWidget(hint)
+
+        # Config management row
         h_cfg = QHBoxLayout()
         h_cfg.setContentsMargins(0, 4, 0, 0)
         h_cfg.setSpacing(8)
         h_cfg.addStretch(1)
-        
-        # DST hint label
-        hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
-        hint.setObjectName("statusKey")
-        hint.setStyleSheet("color: #5D5D5D; font-size: 9px; padding-left: 33px;")
-        lay_eng.addWidget(hint)
 
         self.btn_export = QPushButton("匯出設定")
         self.btn_export.setObjectName("configBtn")
         self.btn_export.clicked.connect(self._export_config)
-        
+
         self.btn_import = QPushButton("匯入設定")
         self.btn_import.setObjectName("configBtn")
         self.btn_import.clicked.connect(self._import_config)
@@ -1189,11 +1470,17 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_save_station.setObjectName("configBtn")
         self.btn_save_station.setToolTip("Save all settings (SRC/OUT/STA/DST/SSH)")
         self.btn_save_station.clicked.connect(self._save_all_settings)
-        
+
         h_cfg.addWidget(self.btn_import)
         h_cfg.addWidget(self.btn_export)
         h_cfg.addWidget(self.btn_save_station)
-        lay_eng.addLayout(h_cfg)
+        lay.addLayout(h_cfg)
+
+        return eng_frame
+
+    def _mk_config_panels(self):
+        op_frame  = self._mk_op_panel()
+        eng_frame = self._mk_eng_panel()
 
         self._config_widgets = [
             self.file_input, self._btn_src,
@@ -1203,12 +1490,17 @@ class RealtimeSplitterApp(QMainWindow):
             self.btn_import, self.btn_export, self.btn_save_station,
             self.dir_dest_input, self._btn_dst,
             self.spin_interval,
-            self.btn_ssh_test
+            self.btn_ssh_test,
         ]
-        
-        # Restore all saved settings
+
         self._restore_all_settings()
         self._update_station_display()
+
+        # Sync panel visibility and lock button with restored preference
+        eng_frame.setVisible(not self._is_locked)
+        self.btn_lock.setText(
+            "🔒 簡易功能 (OP)" if self._is_locked else "🔓 進階功能 (ENG)"
+        )
         return op_frame, eng_frame
     def _mk_status_strip(self):
         frame = QFrame()
@@ -1241,13 +1533,14 @@ class RealtimeSplitterApp(QMainWindow):
         synced_icon = QLabel("→")
         synced_icon.setObjectName("statusKey")
 
+        copy_lbl = QLabel("copy")
+        copy_lbl.setObjectName("statusKey")
+
         h.addWidget(self._lbl_checked_key)
         h.addWidget(self._lbl_checked)
         h.addWidget(sep())
-        h.addWidget(QLabel("copy"))
+        h.addWidget(copy_lbl)
         h.addWidget(self._lbl_copy_result)
-        # fix: set objectName on the static "copy" label
-        h.itemAt(3).widget().setObjectName("statusKey")
         h.addWidget(sep())
         h.addWidget(written_icon)
         h.addWidget(self._lbl_written)
@@ -1267,12 +1560,13 @@ class RealtimeSplitterApp(QMainWindow):
         hdr = QHBoxLayout()
         hdr.setContentsMargins(0, 0, 0, 0)
         act_title = QLabel("Activity Log")
-        act_title.setStyleSheet("color: #5D5D5D; font-size: 10px; font-weight: 700;")
+        act_title.setObjectName("logTitle")
         btn_clear_act = QPushButton("Clear")
         btn_clear_act.setObjectName("sshTest")
-        btn_clear_act.setFixedHeight(18)
+        btn_clear_act.setFixedHeight(_H_MINI)
         btn_clear_act.setStyleSheet(
-            "font-size: 9px; min-width: 36px; max-width: 36px; min-height: 18px; max-height: 18px;"
+            f"font-size: 9px; min-width: 36px; max-width: 36px;"
+            f" min-height: {_H_MINI}px; max-height: {_H_MINI}px;"
         )
         btn_clear_act.clicked.connect(lambda: self.activity_log.clear())
         hdr.addWidget(act_title)
@@ -1283,7 +1577,7 @@ class RealtimeSplitterApp(QMainWindow):
         self.activity_log = QTextEdit()
         self.activity_log.setReadOnly(True)
         self.activity_log.setPlaceholderText("Activity log…")
-        self.activity_log.document().setMaximumBlockCount(1000)
+        self.activity_log.document().setMaximumBlockCount(300)
         mono = QFont("Consolas")
         mono.setStyleHint(QFont.Monospace)
         mono.setPointSize(9)
@@ -1302,23 +1596,35 @@ class RealtimeSplitterApp(QMainWindow):
 
         hdr = QHBoxLayout()
         hdr.setContentsMargins(0, 0, 0, 0)
+
         dot = QLabel("●")
-        dot.setStyleSheet("color: #107C10; font-size: 10px;")
+        dot.setObjectName("uploadFeedDot")
         title = QLabel("Upload Feed")
-        title.setStyleSheet("color: #107C10; font-size: 10px; font-weight: 700;")
+        title.setObjectName("uploadFeedKey")
+
         self._upload_count_lbl = QLabel("| Total: 0")
-        self._upload_count_lbl.setStyleSheet("color: #5D5D5D; font-size: 10px;")
+        self._upload_count_lbl.setObjectName("uploadFeedStat")
         self._upload_queue_lbl = QLabel("| Queue: 0")
-        self._upload_queue_lbl.setStyleSheet("color: #5D5D5D; font-size: 10px;")
+        self._upload_queue_lbl.setObjectName("uploadFeedStat")
         self._upload_eta_lbl = QLabel("| ETA: —")
-        self._upload_eta_lbl.setStyleSheet("color: #0078D4; font-size: 10px; font-weight: 600;")
+        self._upload_eta_lbl.setObjectName("uploadFeedEta")
+
+        # Upload Stop moved here from header — contextually belongs with the feed
+        self.btn_upload_stop = QPushButton("⏹ Stop Upload")
+        self.btn_upload_stop.setObjectName("uploadStop")
+        self.btn_upload_stop.setFixedHeight(_H_MINI)
+        self.btn_upload_stop.setEnabled(False)
+        self.btn_upload_stop.clicked.connect(self._stop_upload)
+
         self._btn_clear_upload = QPushButton("Clear")
         self._btn_clear_upload.setObjectName("sshTest")
-        self._btn_clear_upload.setFixedHeight(18)
+        self._btn_clear_upload.setFixedHeight(_H_MINI)
         self._btn_clear_upload.setStyleSheet(
-            "font-size: 9px; min-width: 36px; max-width: 36px; min-height: 18px; max-height: 18px;"
+            f"font-size: 9px; min-width: 36px; max-width: 36px;"
+            f" min-height: {_H_MINI}px; max-height: {_H_MINI}px;"
         )
         self._btn_clear_upload.clicked.connect(self._clear_upload_feed)
+
         hdr.addWidget(dot)
         hdr.addSpacing(3)
         hdr.addWidget(title)
@@ -1329,18 +1635,20 @@ class RealtimeSplitterApp(QMainWindow):
         hdr.addSpacing(4)
         hdr.addWidget(self._upload_eta_lbl)
         hdr.addStretch(1)
+        hdr.addWidget(self.btn_upload_stop)
+        hdr.addSpacing(4)
         hdr.addWidget(self._btn_clear_upload)
         lay.addLayout(hdr)
 
         self.upload_log = QTextEdit()
         self.upload_log.setReadOnly(True)
         self.upload_log.setPlaceholderText("Uploaded files will appear here…")
-        self.upload_log.document().setMaximumBlockCount(500)
+        self.upload_log.document().setMaximumBlockCount(200)
         mono = QFont("Consolas")
         mono.setStyleHint(QFont.Monospace)
         mono.setPointSize(9)
         self.upload_log.setFont(mono)
-        self.upload_log.setFixedHeight(110)
+        # No fixed height — stretch ratio in _initUI controls proportions
         lay.addWidget(self.upload_log)
         return frame
 
@@ -1352,6 +1660,7 @@ class RealtimeSplitterApp(QMainWindow):
         if p:
             self.file_input.setText(os.path.normpath(p))
             self._log(f"SRC → {p}")
+            self._update_src_summary()
 
     def browse_output(self):
         p = QFileDialog.getExistingDirectory(self, "Select output folder")
@@ -1362,6 +1671,7 @@ class RealtimeSplitterApp(QMainWindow):
         p = QFileDialog.getExistingDirectory(self, "Select destination folder")
         if p:
             self.dir_dest_input.setText(os.path.normpath(p))
+            self._update_src_summary()
 
     # ── Station persistence ───────────────────────────────────
 
@@ -1379,10 +1689,12 @@ class RealtimeSplitterApp(QMainWindow):
         # Save SSH LED state
         ssh_state = self._ssh_led.objectName()  # sshLedIdle, sshLedOk, sshLedFail
         settings.setValue("ssh_state", ssh_state)
-        
+        settings.setValue("is_locked", self._is_locked)
+        settings.setValue("dark_mode", self._dark_mode)
+
         self._log(f"Settings saved: STA{self.station_combo.currentText()}, SRC, OUT, DST, SSH")
-        
-        # Visual feedback — QTimer keeps the UI thread unblocked
+        self._update_src_summary()
+
         orig = self.btn_save_station.text()
         self.btn_save_station.setText("✓")
         QTimer.singleShot(500, lambda: self.btn_save_station.setText(orig))
@@ -1422,6 +1734,19 @@ class RealtimeSplitterApp(QMainWindow):
             self._set_ssh_led("fail")
         else:
             self._set_ssh_led("idle")
+
+        # Restore lock mode (ENG=False / OP=True); default ENG on fresh install
+        self._is_locked = settings.value("is_locked", False, type=bool)
+
+        # Restore dark mode
+        saved_dark = settings.value("dark_mode", False, type=bool)
+        if saved_dark != self._dark_mode:
+            self._dark_mode = saved_dark
+            self.setStyleSheet(STYLESHEET_DARK if self._dark_mode else STYLESHEET_LIGHT)
+            if hasattr(self, '_btn_theme'):
+                self._btn_theme.setText("☀" if self._dark_mode else "🌙")
+
+        self._update_src_summary()
 
     # ── Collapse / Expand ────────────────────────────────────
 
@@ -1472,6 +1797,24 @@ class RealtimeSplitterApp(QMainWindow):
         sid = self.station_combo.currentText()
         self._station_id_lbl.setText(f"STATION ID : {sid}")
         self.setWindowTitle(f"Log Splitter — Live  |  STATION ID : {sid}")
+        self._update_src_summary()
+
+    def _update_src_summary(self):
+        """Refresh the OP-panel context line: SRC → STA → DST (abbreviated)."""
+        if not hasattr(self, '_lbl_src_summary'):
+            return
+        src = self.file_input.text().strip() if hasattr(self, 'file_input') else ""
+        sta = self.station_combo.currentText() if hasattr(self, 'station_combo') else "—"
+        dst = self.dir_dest_input.text().strip() if hasattr(self, 'dir_dest_input') else ""
+        src_short = os.path.basename(src) if src else "—"
+        if ':' in dst:
+            dst_part = dst.split(':')[-1].rstrip('/')
+            dst_short = ('…' + dst_part[-20:]) if len(dst_part) > 20 else dst_part
+        elif dst:
+            dst_short = os.path.basename(dst.rstrip('/\\')) or dst
+        else:
+            dst_short = "—"
+        self._lbl_src_summary.setText(f"{src_short}  →  STA{sta}  →  {dst_short}")
 
     def _toggle_lock(self):
         self._is_locked = not self._is_locked
@@ -1481,18 +1824,26 @@ class RealtimeSplitterApp(QMainWindow):
         else:
             self.btn_lock.setText("🔓 進階功能 (ENG)")
             self._eng_frame.setVisible(True)
+        QSettings("SoloPIXI", "LogSplitter").setValue("is_locked", self._is_locked)
+
+    def _toggle_theme(self):
+        self._dark_mode = not self._dark_mode
+        self.setStyleSheet(STYLESHEET_DARK if self._dark_mode else STYLESHEET_LIGHT)
+        self._btn_theme.setText("☀" if self._dark_mode else "🌙")
+        QSettings("SoloPIXI", "LogSplitter").setValue("dark_mode", self._dark_mode)
 
     def _export_config(self):
         p, _ = QFileDialog.getSaveFileName(self, "匯出設定檔", "config.json", "JSON Files (*.json)")
         if p:
             config_data = {
-                "src_path": self.file_input.text(),
-                "out_path": self.dir_output_input.text(),
-                "dst_path": self.dir_dest_input.text(),
-                "interval": self.spin_interval.value()
+                "src_path":   self.file_input.text(),
+                "out_path":   self.dir_output_input.text(),
+                "dst_path":   self.dir_dest_input.text(),
+                "interval":   self.spin_interval.value(),
+                "station_id": self.station_combo.currentText(),
+                "wo":         self.wo_input.text(),
             }
             try:
-                import json
                 with open(p, 'w', encoding='utf-8') as f:
                     json.dump(config_data, f, indent=4)
                 self._log(f"設定檔已匯出至: {p}")
@@ -1503,14 +1854,19 @@ class RealtimeSplitterApp(QMainWindow):
         p, _ = QFileDialog.getOpenFileName(self, "匯入設定檔", "", "JSON Files (*.json)")
         if p:
             try:
-                import json
                 with open(p, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
-                if "src_path" in config_data: self.file_input.setText(config_data["src_path"])
-                if "out_path" in config_data: self.dir_output_input.setText(config_data["out_path"])
-                if "dst_path" in config_data: self.dir_dest_input.setText(config_data["dst_path"])
-                if "interval" in config_data: self.spin_interval.setValue(config_data["interval"])
+                if "src_path"   in config_data: self.file_input.setText(config_data["src_path"])
+                if "out_path"   in config_data: self.dir_output_input.setText(config_data["out_path"])
+                if "dst_path"   in config_data: self.dir_dest_input.setText(config_data["dst_path"])
+                if "interval"   in config_data: self.spin_interval.setValue(config_data["interval"])
+                if "station_id" in config_data:
+                    sid = config_data["station_id"]
+                    if sid in STATION_OPTIONS:
+                        self.station_combo.setCurrentIndex(STATION_OPTIONS.index(sid))
+                if "wo"         in config_data: self.wo_input.setText(config_data["wo"])
                 self._log(f"設定檔已匯入從: {p}")
+                self._update_src_summary()
             except Exception as e:
                 self._log(f"匯入設定檔失敗: {e}")
 
@@ -1608,36 +1964,23 @@ class RealtimeSplitterApp(QMainWindow):
         self._ssh_led.style().unpolish(self._ssh_led)
         self._ssh_led.style().polish(self._ssh_led)
         
-        # Start breathing animation for ok/fail states
+        if self._ssh_led_effect:
+            self._ssh_led_effect.setOpacity(1.0)
+
         if should_animate:
             self._ssh_led_direction = -1
-            self._ssh_led_timer.start(50)  # 50ms interval for smooth animation
+            self._ssh_led_timer.start(50)
 
     def _animate_ssh_led(self):
-        """Breathing animation for SSH LED."""
         self._ssh_led_opacity += self._ssh_led_direction * 0.05
-        
-        # Reverse direction at boundaries
         if self._ssh_led_opacity <= 0.3:
             self._ssh_led_opacity = 0.3
             self._ssh_led_direction = 1
         elif self._ssh_led_opacity >= 1.0:
             self._ssh_led_opacity = 1.0
             self._ssh_led_direction = -1
-        
-        # Apply opacity via stylesheet (color with alpha)
-        if self._ssh_led_state == "ok":
-            # Green breathing
-            alpha = int(255 * self._ssh_led_opacity)
-            self._ssh_led.setStyleSheet(
-                f"color: rgba(16, 124, 16, {alpha}); font-size: 12px; min-width: 14px; max-width: 14px;"
-            )
-        elif self._ssh_led_state == "fail":
-            # Red breathing
-            alpha = int(255 * self._ssh_led_opacity)
-            self._ssh_led.setStyleSheet(
-                f"color: rgba(197, 15, 31, {alpha}); font-size: 12px; min-width: 14px; max-width: 14px;"
-            )
+        if self._ssh_led_effect:
+            self._ssh_led_effect.setOpacity(self._ssh_led_opacity)
 
     # ── Watcher control ───────────────────────────────────────
 
@@ -1658,6 +2001,19 @@ class RealtimeSplitterApp(QMainWindow):
     def start_watching(self):
         if not self._validate():
             return
+
+        dst = self.dir_dest_input.text().strip()
+        if dst and is_rsync_path(dst) and self._ssh_led_state == "fail":
+            reply = QMessageBox.question(
+                self, "DST 連線異常",
+                f"SSH 連線測試失敗，無法連線到：\n{dst}\n\n"
+                "仍要繼續？（檔案將只寫入本機 OUT 目錄，不上傳）",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply == QMessageBox.No:
+                return
+
         out = self.dir_output_input.text().strip()
         station_id = self.station_combo.currentText()
         effective_out = resolve_out_dir(out, station_id)
@@ -1706,7 +2062,20 @@ class RealtimeSplitterApp(QMainWindow):
         self._log("Initial scan starting…")
         self._launch_split()
 
-    def stop_watching(self):
+    def stop_watching(self, force: bool = False):
+        if not force:
+            q_depth = self._upload_queue.qsize() if self._upload_queue else 0
+            if q_depth > 0:
+                reply = QMessageBox.question(
+                    self, "停止確認",
+                    f"上傳佇列還有 {q_depth} 個檔案等待處理，確定停止？\n"
+                    "（停止後尚未上傳的檔案不會自動重試）",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply == QMessageBox.No:
+                    return
+
         if self._watcher_thread:
             self._watcher_thread.stop()
             self._watcher_thread.wait(3000)
@@ -1842,6 +2211,9 @@ class RealtimeSplitterApp(QMainWindow):
             self._seen_files.add(name)
             self._session_written += 1
             self._log(f"  ↑  {name}")
+        # Rolling cap: keep memory bounded on long-running sessions
+        if len(self._seen_files) > 5000:
+            self._seen_files = set(list(self._seen_files)[-3000:])
         self._lbl_written.setText(str(self._session_written))
         self._update_mini_stats()
         if self._watcher_thread and self._watcher_thread.isRunning():
@@ -1867,9 +2239,9 @@ class RealtimeSplitterApp(QMainWindow):
         if self._ssh_led_timer:
             self._ssh_led_timer.stop()
         
-        split_thread  = self._split_thread   # save refs before stop_watching clears state
+        split_thread  = self._split_thread
         upload_thread = self._upload_thread
-        self.stop_watching()
+        self.stop_watching(force=True)  # skip queue dialog on app close
         if split_thread and split_thread.isRunning():
             split_thread.wait(5000)
         if upload_thread and upload_thread.isRunning():
@@ -1882,8 +2254,9 @@ if __name__ == '__main__':
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
-    if os.path.exists(APP_ICON_PATH):
-        app.setWindowIcon(QIcon(APP_ICON_PATH))
+    _icon = TN_LOGO_PATH if os.path.exists(TN_LOGO_PATH) else APP_ICON_PATH
+    if os.path.exists(_icon):
+        app.setWindowIcon(QIcon(_icon))
     window = RealtimeSplitterApp()
     window.show()
     sys.exit(app.exec_())

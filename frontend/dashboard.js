@@ -73,6 +73,12 @@ const logdirWoRoot = $('logdir-wo-root');
 const logdirRawlogs = $('logdir-rawlogs');
 const woFolderPath = $('wo-folder-path');
 
+// Sys Metrics
+const sysIp         = $('sys-ip');
+const sysCpu        = $('sys-cpu');
+const sysRam        = $('sys-ram');
+const sysTemp       = $('sys-temp');
+
 // DB Upload UI Elements
 const btnDbSettings = $('btn-db-settings');
 const dbModal = $('db-modal');
@@ -478,11 +484,11 @@ function renderRecordsFromCache() {
   }
 }
 
-// ── Clock + Date ─────────────────────────────────────────────────────────────
+// ── Clock + System Metrics + Init ─────────────────────────────────────────────────────────────
 const dateBadge = $('date-badge');
 function tickClock() {
   const now = new Date();
-  clock.textContent = now.toLocaleTimeString('en-GB', { hour12: false });
+  if (clock) clock.textContent = now.toLocaleTimeString('en-GB', { hour12: false });
   if (dateBadge) {
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -492,6 +498,34 @@ function tickClock() {
 }
 setInterval(tickClock, 1000);
 tickClock();
+
+async function _fetchSystemMetrics() {
+  try {
+    const res = await fetch('/api/system-metrics');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (sysIp) sysIp.textContent = data.eth0_ip;
+    if (sysCpu) {
+      sysCpu.textContent = data.cpu_usage;
+      const cpuVal = parseFloat(data.cpu_usage);
+      if (!isNaN(cpuVal)) {
+        sysCpu.className = cpuVal > 80 ? 'sys-value sys-warn' : 'sys-value sys-ok';
+      }
+    }
+    if (sysRam) sysRam.textContent = data.free_mem;
+    if (sysTemp) {
+      sysTemp.textContent = data.cpu_temp;
+      const tempVal = parseFloat(data.cpu_temp);
+      if (!isNaN(tempVal)) {
+        sysTemp.className = tempVal > 70 ? 'sys-value sys-warn' : 'sys-value sys-ok';
+      }
+    }
+  } catch (err) {
+    // silently fail
+  }
+}
+_fetchSystemMetrics();
+setInterval(_fetchSystemMetrics, 5000);
 
 // ── Input lock / unlock (after Save / before Clear) ──────────────────────────
 const btnEditSettings = $('btn-edit-settings');

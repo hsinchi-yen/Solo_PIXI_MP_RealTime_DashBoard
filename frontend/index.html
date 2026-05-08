@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=14">
+  <link rel="stylesheet" href="/static/style.css?v=15">
 </head>
 <body>
 
@@ -97,7 +97,29 @@
 
   <div class="header-sep"></div>
 
-  <!-- Block 3: Date (top) + Clock (bottom), same font size -->
+  <!-- Block 3: System Metrics -->
+  <div class="header-sys-metrics">
+    <div class="sys-metric" title="ETH0 IP Address">
+      <span class="sys-label">ETH0</span>
+      <span class="sys-value" id="sys-ip">---.---.---.---</span>
+    </div>
+    <div class="sys-metric" title="CPU Usage">
+      <span class="sys-label">CPU</span>
+      <span class="sys-value" id="sys-cpu">--%</span>
+    </div>
+    <div class="sys-metric" title="Available Memory">
+      <span class="sys-label">RAM</span>
+      <span class="sys-value" id="sys-ram">--</span>
+    </div>
+    <div class="sys-metric" title="CPU Temperature">
+      <span class="sys-label">TEMP</span>
+      <span class="sys-value" id="sys-temp">--°C</span>
+    </div>
+  </div>
+
+  <div class="header-sep"></div>
+
+  <!-- Block 4: Date (top) + Clock (bottom), same font size -->
   <div class="header-clock">
     <div class="header-clock-inner">
       <span id="date-badge" class="date-badge">----/--/--</span>
@@ -273,6 +295,6 @@
   </div>
 </div>
 
-<script src="/static/dashboard.js?v=22"></script>
+<script src="/static/dashboard.js?v=25"></script>
 </body>
 </html>
