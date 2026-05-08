@@ -171,19 +171,52 @@ class UploaderManager:
             conn.close()
             return
 
+        # Gather candidate filenames first (cheap — no parsing yet)
+        candidate_names = {
+            f.name
+            for f in path.iterdir()
+            if f.is_file() and f.suffix.lower() == ".txt"
+            and _parser_accepts(parser, f.name)
+        }
+
+        # Pre-fetch which of those filenames already exist in DB — avoids
+        # re-parsing and re-inserting files that were already uploaded.
+        already_in_db: set[str] = set()
+        if candidate_names:
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT source_file FROM module_test WHERE source_file = ANY(%s)",
+                    (list(candidate_names),),
+                )
+                already_in_db = {row[0] for row in cur.fetchall()}
+                cur.close()
+                if already_in_db:
+                    logger.info(
+                        "pre-check: skipping %d file(s) already in DB",
+                        len(already_in_db),
+                    )
+            except Exception as exc:
+                logger.warning("DB pre-check failed, falling back to ON CONFLICT: %s", exc)
+
         files = [
             f
             for f in path.iterdir()
             if f.is_file() and f.suffix.lower() == ".txt"
             and _parser_accepts(parser, f.name)
+            and f.name not in already_in_db
             and (processed_files is None or str(f) not in processed_files)
         ]
 
+        skipped = len(already_in_db & candidate_names)
+
         if not files:
             conn.close()
+            with self.lock:
+                self.stats["skipped"] += skipped
             return
 
-        uploaded = skipped = failed = 0
+        uploaded = failed = 0
         for i, fpath in enumerate(files):
             if processed_files is not None and not self.auto_upload_running:
                 break

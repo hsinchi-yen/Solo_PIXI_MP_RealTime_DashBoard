@@ -3,6 +3,7 @@ import json
 import ipaddress
 import logging
 import os
+import re as _re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +12,7 @@ import socket
 import struct
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import BASE_DIR, load_config
@@ -300,9 +301,32 @@ def _get_config_lock() -> asyncio.Lock:
     return lock
 
 
+def _static_version(filename: str) -> str:
+    """Return mtime-based version string for a frontend file."""
+    try:
+        return str(int((FRONTEND_DIR / filename).stat().st_mtime))
+    except OSError:
+        return "0"
+
+
 @app.get("/")
 async def root():
-    return FileResponse(FRONTEND_DIR / "index.html")
+    html_path = FRONTEND_DIR / "index.html"
+    try:
+        html = html_path.read_text(encoding="utf-8")
+        html = _re.sub(
+            r'(style\.css\?v=)\d+',
+            lambda m: m.group(1) + _static_version("style.css"),
+            html,
+        )
+        html = _re.sub(
+            r'(dashboard\.js\?v=)\d+',
+            lambda m: m.group(1) + _static_version("dashboard.js"),
+            html,
+        )
+        return HTMLResponse(content=html)
+    except OSError:
+        return FileResponse(html_path)
 
 
 @app.get("/api/access")
@@ -526,11 +550,26 @@ async def save_mission(request: Request, body: dict):
     if payload["qty"] < 1:
         payload["qty"] = 1
 
+    # Auto-create WO directory when it doesn't exist yet (custom WO entry)
+    wo_name = payload["wo"].strip()
+    wo_dir_created = False
+    if wo_name and WORK_ORDER_ROOT.is_dir():
+        if _find_wo_dir(wo_name) is None:
+            new_wo_dir = WORK_ORDER_ROOT / wo_name
+            try:
+                new_wo_dir.mkdir(parents=True, exist_ok=True)
+                wo_dir_created = True
+                logger.info("auto-created WO directory: %s", new_wo_dir)
+                global _work_order_cache_ts
+                _work_order_cache_ts = 0.0  # invalidate WO list cache
+            except OSError as exc:
+                logger.warning("could not create WO directory %s: %s", new_wo_dir, exc)
+
     try:
         MISSION_FILE.parent.mkdir(parents=True, exist_ok=True)
         with MISSION_FILE.open("w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
-        return JSONResponse({"ok": True})
+        return JSONResponse({"ok": True, "wo_dir_created": wo_dir_created})
     except Exception as e:
         logger.error("failed to save mission config: %s", e)
         return JSONResponse({"error": "failed to save mission"}, status_code=500)

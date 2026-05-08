@@ -178,7 +178,10 @@ function _setHealthLabel(el, ok, locked = false) {
   el.classList.add(ok ? 'ok' : 'bad');
 }
 
+let _pathHealthInFlight = false;
 async function _refreshPathHealth() {
+  if (_pathHealthInFlight) return;
+  _pathHealthInFlight = true;
   const wo = _getWoValue();
   _refreshWoPathLabel(null);
 
@@ -194,6 +197,8 @@ async function _refreshPathHealth() {
     _setHealthLabel(opsWoRoot, false, !CAN_MODIFY);
     _setHealthLabel(opsRawlogs, false, !CAN_MODIFY);
     _refreshWoPathLabel(null);
+  } finally {
+    _pathHealthInFlight = false;
   }
 }
 
@@ -687,10 +692,14 @@ if (filterResult) {
     renderRecordsFromCache();
   });
 }
+let _kwTimer = null;
 if (filterKeyword) {
   filterKeyword.addEventListener('input', () => {
-    recordsFilter.keyword = filterKeyword.value.trim().toLowerCase();
-    renderRecordsFromCache();
+    clearTimeout(_kwTimer);
+    _kwTimer = setTimeout(() => {
+      recordsFilter.keyword = filterKeyword.value.trim().toLowerCase();
+      renderRecordsFromCache();
+    }, 150);
   });
 }
 if (filterAnomalyBtn) {
@@ -884,6 +893,8 @@ function renderDistribution(dist) {
 // ── Record row ────────────────────────────────────────────────────────────────
 const RESULT_ICON = { PASS: '✓', FAIL: '✗', STOP: '⊘' };
 
+// SAFETY INVARIANT: every rec.* field in the innerHTML template below MUST be
+// wrapped in esc(). Adding a new field without esc() is an XSS vulnerability.
 function buildRow(rec) {
   const tr = document.createElement('tr');
   tr.className = 'record-row';
@@ -1420,23 +1431,32 @@ async function init() {
   };
 
   es.addEventListener('stats_update', e => {
-    const data = JSON.parse(e.data);
-    updateKPI(data);
-    if (data.hourly_counts)      renderHourlyChart(data.hourly_counts);
-    if (data.result_distribution) renderDistribution(data.result_distribution);
+    try {
+      const data = JSON.parse(e.data);
+      updateKPI(data);
+      if (data.hourly_counts)       renderHourlyChart(data.hourly_counts);
+      if (data.result_distribution) renderDistribution(data.result_distribution);
+    } catch (err) { console.error('SSE stats_update error', err); }
   });
 
-  es.addEventListener('new_record', e => prependRecord(JSON.parse(e.data)));
+  es.addEventListener('new_record', e => {
+    try { prependRecord(JSON.parse(e.data)); }
+    catch (err) { console.error('SSE new_record error', err); }
+  });
 
   es.addEventListener('init_progress', e => {
-    const { current, total } = JSON.parse(e.data);
-    showProgress(current, total);
+    try {
+      const { current, total } = JSON.parse(e.data);
+      showProgress(current, total);
+    } catch (err) { console.error('SSE init_progress error', err); }
   });
 
   es.addEventListener('init_complete', async () => {
-    const s = await fetch('/api/snapshot').then(r => r.json());
-    hideProgress();
-    renderSnapshot(s);
+    try {
+      const s = await fetch('/api/snapshot').then(r => r.json());
+      hideProgress();
+      renderSnapshot(s);
+    } catch (err) { console.error('SSE init_complete error', err); }
   });
 
   es.addEventListener('reset', () => {
@@ -1449,14 +1469,21 @@ async function init() {
 init().catch(console.error);
 
 // ── Silent KPI polling (fallback for missed SSE events) ──────────────────────
+let _silentRefreshAbort = null;
 async function _silentRefresh() {
+  if (_silentRefreshAbort) _silentRefreshAbort.abort();
+  _silentRefreshAbort = new AbortController();
   try {
-    const s = await fetch('/api/snapshot').then(r => r.json());
+    const s = await fetch('/api/snapshot', { signal: _silentRefreshAbort.signal }).then(r => r.json());
     if (!s.ready) return;
     updateKPI(s.stats);
     if (s.hourly_counts)       renderHourlyChart(s.hourly_counts);
     if (s.result_distribution) renderDistribution(s.result_distribution);
-  } catch (_) {}
+  } catch (err) {
+    if (err.name !== 'AbortError') console.warn('silent refresh failed', err);
+  } finally {
+    _silentRefreshAbort = null;
+  }
 }
 setInterval(_silentRefresh, 30000);
 setInterval(_refreshPathHealth, 15000);

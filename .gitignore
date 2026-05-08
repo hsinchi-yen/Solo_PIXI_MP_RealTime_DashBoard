@@ -6,3 +6,11 @@ __pycache__/
 .idea/
 .claude/
 .claude-plugin/
+
+_build_venv/
+build/
+dist/
+.env
+.opencode/
+
+*.log
