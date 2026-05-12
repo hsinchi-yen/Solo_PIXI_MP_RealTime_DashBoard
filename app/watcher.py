@@ -178,7 +178,9 @@ async def _rescan_all(log_dir: str, state: DashboardState, sse: SSEManager) -> N
     files = sorted(p.glob("*.txt"), key=lambda f: f.name)
     records = await asyncio.to_thread(lambda: [parser.parse(str(f)) for f in files])
     filtered = [r for r in records if r]
-    await state.rebuild(filtered)
+    # Sort by datetime (oldest first) so newest records end up in recent_records deque
+    filtered_sorted = sorted(filtered, key=lambda r: r["datetime"])
+    await state.rebuild(filtered_sorted)
     await sse.broadcast("init_complete", {})
 
 
