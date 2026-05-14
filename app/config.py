@@ -1,3 +1,4 @@
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,17 @@ class Config:
     server: ServerConfig
     watcher: WatcherConfig
     dashboard: DashboardConfig
+
+
+def save_log_dir(log_dir: Path, config_path: "str | Path | None" = None) -> None:
+    """Persist log_dir back to settings.toml so it survives restarts."""
+    if config_path is None:
+        config_path = BASE_DIR / "config" / "settings.toml"
+    p = Path(config_path)
+    text = p.read_text(encoding="utf-8")
+    new_line = f'log_dir = "{log_dir.as_posix()}"'
+    text = re.sub(r"^log_dir\s*=\s*.+$", new_line, text, flags=re.MULTILINE)
+    p.write_text(text, encoding="utf-8")
 
 
 def load_config(path: str | None = None) -> Config:

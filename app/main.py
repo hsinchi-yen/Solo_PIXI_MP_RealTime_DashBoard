@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import BASE_DIR, load_config
+from .config import BASE_DIR, load_config, save_log_dir
 from .parser import parse
 from .sse import SSEManager, TooManyConnectionsError
 from .state import DashboardState
@@ -230,7 +230,15 @@ async def _startup_scan(log_dir: str) -> None:
         await sse_manager.broadcast("init_complete", {})
         return
 
-    files = sorted(p.glob("*.txt"), key=lambda f: f.name)
+    def _dt_sort_key(f: Path) -> str:
+        parts = f.stem.split("_")
+        for i, part in enumerate(parts):
+            if len(part) == 8 and part.isdigit() and i + 1 < len(parts):
+                if len(parts[i + 1]) == 6 and parts[i + 1].isdigit():
+                    return part + parts[i + 1]  # YYYYMMDDHHMMSS
+        return f.name
+
+    files = sorted(p.glob("*.txt"), key=_dt_sort_key)
     batch_size = config.watcher.startup_scan_batch_size
     state.scan_total = len(files)
     state.scan_current = 0
@@ -480,6 +488,12 @@ async def set_log_dir(request: Request, body: dict):
         # Reset state and update config
         state.reset()
         config.paths.log_dir = p
+
+        # Persist the new path to settings.toml so it survives restarts
+        try:
+            save_log_dir(p)
+        except Exception as exc:
+            logger.warning("could not persist log_dir to settings.toml: %s", exc)
 
         # Restart
         loop = asyncio.get_running_loop()

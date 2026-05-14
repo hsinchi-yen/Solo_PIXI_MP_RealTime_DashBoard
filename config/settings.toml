@@ -1,5 +1,5 @@
 [paths]
-log_dir = "rawlogs"
+log_dir = "/run/media/nvme0n1p1/rawlogs"
 
 [server]
 host = "0.0.0.0"
