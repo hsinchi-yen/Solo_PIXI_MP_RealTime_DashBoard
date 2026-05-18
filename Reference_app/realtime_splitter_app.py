@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLineEdit, QLabel,
                              QFileDialog, QTextEdit, QFrame, QSpinBox,
                              QMessageBox, QStyle, QSizePolicy, QComboBox,
-                             QGraphicsOpacityEffect)
+                             QGraphicsOpacityEffect, QDialog)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QSettings, QTimer
 from PyQt5.QtGui import QIcon, QFont
 
@@ -32,7 +32,35 @@ APP_ICON_PATH = get_resource_path('build_assets', 'icons', 'solo_pixi_splitter.i
 TN_LOGO_PATH  = get_resource_path('tn_log.png')
 DEFAULT_POLL_INTERVAL = 60
 DEFAULT_RSYNC_PATH = 'root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/'
-STATION_OPTIONS = ['10', '20', '30', '40', '50', '60', '70', '80']
+STATION_IDS = ['10', '20', '30', '40']
+DEFAULT_SRCS = {
+    '10': r'D:\IQxel\ATSuite_V7_0_1_IQmeasure_3.1.2.20170623_QCA9377_V1.0.0\Release_2_RF1B\log',
+    '20': r'D:\IQxel\ATSuite_V7_0_1_IQmeasure_3.1.2.20170623_QCA9377_V1.0.0\Release_RF1B\log',
+    '30': r'D:\IQxel\ATSuite_V7_0_1_IQmeasure_3.1.2.20170623_QCA9377_V1.0.0\Release_RF2A\log',
+    '40': r'D:\IQxel\ATSuite_V7_0_1_IQmeasure_3.1.2.20170623_QCA9377_V1.0.0\Release_RF2B\log',
+}
+OUT_BASE_ROOTS = {
+    '10': r'E:\TN131_LOG_BACKUP\10',
+    '20': r'E:\TN131_LOG_BACKUP\20',
+    '30': r'E:\TN131_LOG_BACKUP\30',
+    '40': r'E:\TN131_LOG_BACKUP\40',
+}
+
+# Files moved from SRC to OUT during 結批 (non-split ancillary files)
+CLOSE_BATCH_FILES = frozenset({
+    'Log_All.txt', 'Log_all.csv', 'log_summary.txt',
+    '2412_ANT_1_CCK-11.jpg', '2412_ANT_1_MCS7.jpg',
+    '2412_ANT_1_OFDM-54.jpg', '2422_ANT_1_MCS7.jpg',
+    '2442_ANT_1_CCK-11.jpg', '2442_ANT_1_MCS7.jpg',
+    '2442_ANT_1_OFDM-54.jpg', '2467_ANT_1_CCK-11.jpg',
+    '2467_ANT_1_MCS7.jpg', '2467_ANT_1_OFDM-54.jpg',
+    '5180_ANT_1_MCS7.jpg', '5180_ANT_1_OFDM-54.jpg',
+    '5190_ANT_1_MCS7.jpg', '5210_ANT_1_MCS9.jpg',
+    '5500_ANT_1_MCS7.jpg', '5500_ANT_1_OFDM-54.jpg',
+    '5510_ANT_1_MCS7.jpg', '5530_ANT_1_MCS9.jpg',
+    '5755_ANT_1_MCS7.jpg', '5765_ANT_1_MCS7.jpg',
+    '5765_ANT_1_OFDM-54.jpg', '5775_ANT_1_MCS9.jpg',
+})
 
 # ── UI size tokens ────────────────────────────────────────────
 _H_INPUT   = 24   # standard input / combo height
@@ -322,6 +350,34 @@ QPushButton#themeBtn {
 QPushButton#themeBtn:hover   { background-color: #3A3A3A; color: #FFFFFF; border-color: #888888; }
 QPushButton#themeBtn:pressed { background-color: #222222; }
 
+/* ── 結批 button — orange warning ── */
+QPushButton#closeBatch {
+    background-color: #CA5010;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-weight: 600;
+    font-size: 11px;
+}
+QPushButton#closeBatch:hover   { background-color: #B44000; }
+QPushButton#closeBatch:pressed { background-color: #9A3500; }
+QPushButton#closeBatch:disabled { background-color: #E8C4A0; color: #FFFFFF; }
+
+/* ── 新增工單 button — green ── */
+QPushButton#newWo {
+    background-color: #107C10;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-weight: 600;
+    font-size: 11px;
+}
+QPushButton#newWo:hover   { background-color: #0A6A0A; }
+QPushButton#newWo:pressed { background-color: #085A08; }
+QPushButton#newWo:disabled { background-color: #A8D4A8; color: #FFFFFF; }
+
 /* ── ComboBox ── */
 QComboBox {
     border: 1px solid #CECECE;
@@ -338,6 +394,27 @@ QComboBox QAbstractItemView {
     border: 1px solid #CECECE;
     selection-background-color: #0078D4;
     color: #1A1A1A;
+}
+
+/* ── Default (reset) button ── */
+QPushButton#defaultBtn {
+    background-color: #F0F0F0;
+    color: #444444;
+    border: 1px solid #C0C0C0;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 10px;
+}
+QPushButton#defaultBtn:hover   { background-color: #E0E0E0; border-color: #9E9E9E; }
+QPushButton#defaultBtn:pressed { background-color: #D0D0D0; }
+QPushButton#defaultBtn:disabled { color: #AAAAAA; border-color: #DCDCDC; }
+
+/* ── Header date label ── */
+QLabel#headerDate {
+    color: #8A8A8A;
+    font-size: 10px;
+    font-family: "Consolas", monospace;
+    padding-right: 2px;
 }
 """
 
@@ -506,6 +583,43 @@ QPushButton#configBtn {
 }
 QPushButton#configBtn:hover   { background-color: #3E3E3E; border-color: #666666; }
 QPushButton#configBtn:pressed { background-color: #282828; }
+
+QPushButton#closeBatch {
+    background-color: #A04010; color: #FFFFFF; border: none;
+    border-radius: 4px; padding: 4px 10px; font-weight: 600; font-size: 11px;
+}
+QPushButton#closeBatch:hover   { background-color: #B84C14; }
+QPushButton#closeBatch:pressed { background-color: #883208; }
+QPushButton#closeBatch:disabled { background-color: #4A2810; color: #7A5A4A; }
+
+QPushButton#newWo {
+    background-color: #0A5C0A; color: #FFFFFF; border: none;
+    border-radius: 4px; padding: 4px 10px; font-weight: 600; font-size: 11px;
+}
+QPushButton#newWo:hover   { background-color: #136C13; }
+QPushButton#newWo:pressed { background-color: #074807; }
+QPushButton#newWo:disabled { background-color: #1A3A1A; color: #4A6A4A; }
+
+/* ── Default (reset) button ── */
+QPushButton#defaultBtn {
+    background-color: #2A2A2A;
+    color: #A0A0A0;
+    border: 1px solid #484848;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 10px;
+}
+QPushButton#defaultBtn:hover   { background-color: #383838; border-color: #666666; color: #E0E0E0; }
+QPushButton#defaultBtn:pressed { background-color: #1E1E1E; }
+QPushButton#defaultBtn:disabled { color: #484848; border-color: #333333; }
+
+/* ── Header date label ── */
+QLabel#headerDate {
+    color: #585858;
+    font-size: 10px;
+    font-family: "Consolas", monospace;
+    padding-right: 2px;
+}
 
 QLabel#miniStats { color: #6CCB5F; font-size: 11px; font-weight: 700; padding-left: 8px; }
 """
@@ -1129,11 +1243,8 @@ class UploadThread(QThread):
         try:
             _, sftp = self._get_sftp(host, user, remote_dir)
             remote_file = remote_dir.rstrip('/') + '/' + filename
-            try:
-                sftp.stat(remote_file)  # already exists → skip
-            except FileNotFoundError:
-                sftp.put(out_path, remote_file)
-                self.file_uploaded.emit(filename)
+            sftp.put(out_path, remote_file)
+            self.file_uploaded.emit(filename)
         except paramiko.AuthenticationException:
             self.upload_failed.emit(filename, "SSH auth failed")
             # Drop cached session so next attempt reconnects clean
@@ -1155,40 +1266,100 @@ class UploadThread(QThread):
 
 
 # ─────────────────────────────────────────────────────────────
-#  Main window  (compact, 480×270 ~ 960×540)
+#  WOU Input Dialog — mandatory or optional input
+# ─────────────────────────────────────────────────────────────
+class WouInputDialog(QDialog):
+    def __init__(self, parent=None, current_wou="", allow_cancel=False):
+        super().__init__(parent)
+        self.setWindowTitle("輸入工單號碼 (WOU)")
+        flags = self.windowFlags() & ~Qt.WindowContextHelpButtonHint
+        if not allow_cancel:
+            flags &= ~Qt.WindowCloseButtonHint
+        self.setWindowFlags(flags)
+        self.setModal(True)
+        self.setMinimumWidth(380)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 16, 16, 12)
+        lay.setSpacing(8)
+
+        lay.addWidget(QLabel("請輸入工單號碼 (WOU)："))
+
+        self._input = QLineEdit()
+        self._input.setPlaceholderText("e.g. 5101-260129012")
+        self._input.setText(current_wou)
+        self._input.setFixedHeight(28)
+        self._input.returnPressed.connect(self._try_accept)
+        lay.addWidget(self._input)
+
+        self._err_lbl = QLabel("")
+        self._err_lbl.setStyleSheet("color: #C50F1F; font-size: 10px;")
+        self._err_lbl.setVisible(False)
+        lay.addWidget(self._err_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        if allow_cancel:
+            btn_cancel = QPushButton("取消")
+            btn_cancel.setObjectName("configBtn")
+            btn_cancel.setFixedHeight(28)
+            btn_cancel.clicked.connect(self.reject)
+            btn_row.addWidget(btn_cancel)
+            btn_row.addSpacing(6)
+        self.btn_ok = QPushButton("確認")
+        self.btn_ok.setObjectName("start")
+        self.btn_ok.setFixedHeight(28)
+        self.btn_ok.clicked.connect(self._try_accept)
+        btn_row.addWidget(self.btn_ok)
+        lay.addLayout(btn_row)
+
+    def _try_accept(self):
+        val = self._input.text().strip()
+        if not val:
+            self._err_lbl.setText("工單號碼不得為空")
+            self._err_lbl.setVisible(True)
+            return
+        self.accept()
+
+    def value(self):
+        return self._input.text().strip()
+
+
+# ─────────────────────────────────────────────────────────────
+#  Main window
 # ─────────────────────────────────────────────────────────────
 class RealtimeSplitterApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self._watcher_thread = None
-        self._split_thread   = None
-        self._upload_thread  = None
-        self._upload_queue   = None
-        self._pending_split  = False
-        self._seen_files     = set()
-        self._session_written = 0
-        self._session_synced  = 0
-        self._is_locked       = False  # ENG mode by default; overridden by saved setting
-        self._dark_mode       = False
+        self._watcher_threads  = {}   # {sta_id: WatcherThread}
+        self._split_threads    = {}   # {sta_id: SplitCopyThread}
+        self._pending_splits   = {}   # {sta_id: bool}
+        self._seen_files       = {}   # {sta_id: set}
+        self._upload_thread    = None
+        self._upload_queue     = None
+        self._session_written  = 0
+        self._session_synced   = 0
+        self._is_locked        = False
+        self._dark_mode        = False
 
-        # SSH LED breathing animation (effect object set in _mk_eng_panel)
         self._ssh_led_effect    = None
         self._ssh_led_timer     = QTimer()
         self._ssh_led_timer.timeout.connect(self._animate_ssh_led)
         self._ssh_led_opacity   = 1.0
         self._ssh_led_direction = -1
         self._ssh_led_state     = "idle"
-        
+
         self._initUI()
-        QTimer.singleShot(800, self._auto_ssh_test)  # auto-test after UI settles
+        QTimer.singleShot(100, self._check_wou_on_startup)
+        QTimer.singleShot(800, self._auto_ssh_test)
 
     # ── UI construction ──────────────────────────────────────
 
     def _initUI(self):
         self.setWindowTitle('Log Splitter — Live')
-        self.setMinimumSize(480, 297)
-        self.setMaximumSize(960, 800)
-        self.resize(720, 600)
+        self.setMinimumSize(672, 400)
+        self.setMaximumSize(1280, 960)
+        self.resize(936, 720)
         self.setStyleSheet(STYLESHEET_LIGHT)
         _icon = TN_LOGO_PATH if os.path.exists(TN_LOGO_PATH) else APP_ICON_PATH
         if os.path.exists(_icon):
@@ -1240,6 +1411,18 @@ class RealtimeSplitterApp(QMainWindow):
         self._lbl_mini_stats.setObjectName("miniStats")
         self._lbl_mini_stats.setVisible(False)
 
+        self.btn_close_batch = QPushButton("結批")
+        self.btn_close_batch.setObjectName("closeBatch")
+        self.btn_close_batch.setFixedHeight(_H_BTN)
+        self.btn_close_batch.setToolTip("將各站 log 目錄內容搬移至對應 OUT 目錄")
+        self.btn_close_batch.clicked.connect(self._on_close_batch)
+
+        self.btn_new_wo = QPushButton("新增工單 [—]")
+        self.btn_new_wo.setObjectName("newWo")
+        self.btn_new_wo.setFixedHeight(_H_BTN)
+        self.btn_new_wo.setToolTip("輸入新工單號碼，更新所有 OUT 路徑")
+        self.btn_new_wo.clicked.connect(self._on_new_wo)
+
         self.btn_start = QPushButton("▶  Start")
         self.btn_start.setObjectName("start")
         self.btn_start.setFixedHeight(_H_BTN)
@@ -1250,8 +1433,6 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_stop.setFixedHeight(_H_BTN)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_watching)
-
-        # btn_upload_stop is created in _mk_upload_log and placed in the Upload Feed header
 
         self.btn_collapse = QPushButton("−")
         self.btn_collapse.setObjectName("collapseBtn")
@@ -1272,15 +1453,25 @@ class RealtimeSplitterApp(QMainWindow):
         self._btn_theme.setToolTip("切換 深色 / 淺色 主題")
         self._btn_theme.clicked.connect(self._toggle_theme)
 
+        today_str = datetime.now().strftime('%Y%m%d')
+        self._lbl_header_date = QLabel(today_str)
+        self._lbl_header_date.setObjectName("headerDate")
+        self._lbl_header_date.setToolTip("Today's date")
+
         # Build Layout Sequence
         h.addWidget(self._dot)
         h.addWidget(self._dot_state)
         h.addSpacing(4)
         h.addWidget(title)
+        h.addSpacing(6)
+        h.addWidget(self._lbl_header_date)
         h.addWidget(self._station_id_lbl)
         h.addWidget(self._lbl_mini_stats)
         h.addStretch(1)
         h.addWidget(self.btn_lock)
+        h.addSpacing(6)
+        h.addWidget(self.btn_close_batch)
+        h.addWidget(self.btn_new_wo)
         h.addSpacing(6)
         h.addWidget(self.btn_start)
         h.addWidget(self.btn_stop)
@@ -1292,7 +1483,16 @@ class RealtimeSplitterApp(QMainWindow):
         return frame
 
     def _mk_op_panel(self):
-        def row(tag, widget):
+        def browse_btn(slot):
+            b = QPushButton()
+            b.setObjectName("browse")
+            b.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
+            b.setIconSize(QSize(13, 13))
+            b.setFixedSize(_BROWSE_SZ, _BROWSE_SZ)
+            b.clicked.connect(slot)
+            return b
+
+        def row(tag, widget, btn=None):
             h = QHBoxLayout()
             h.setContentsMargins(0, 0, 0, 0)
             h.setSpacing(5)
@@ -1301,6 +1501,10 @@ class RealtimeSplitterApp(QMainWindow):
             lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             h.addWidget(lbl)
             h.addWidget(widget, stretch=1)
+            if btn is not None:
+                h.addWidget(btn)
+            else:
+                h.addSpacing(29)
             return h
 
         op_frame = QFrame()
@@ -1312,38 +1516,52 @@ class RealtimeSplitterApp(QMainWindow):
         outer.addWidget(inner)
         lay = QVBoxLayout(inner)
         lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(8)
+        lay.setSpacing(6)
 
-        # Work Order
+        # WOU
         self.wo_input = QLineEdit()
         self.wo_input.setPlaceholderText("Work Order …  e.g. 5101-260129012")
         self.wo_input.setFixedHeight(_H_INPUT)
-        self.wo_input.setToolTip(
-            "Work order — creates [WO]\\ subfolder with WO-prefixed files\n"
-            "Format: {WO}_{date}_{time}_{MAC1}_{MAC2}_{result}.txt\n"
-            "Also uploads to same level as rawlogs on remote"
-        )
+        self.wo_input.setToolTip("工單號碼 — 決定各站 OUT 目錄名稱")
         self.wo_input.setClearButtonEnabled(True)
+        self.wo_input.textChanged.connect(self._on_wou_changed)
         lay.addLayout(row("WOU", self.wo_input))
 
-        # Station
-        self.station_combo = QComboBox()
-        self.station_combo.addItems(STATION_OPTIONS)
-        self.station_combo.setFixedHeight(_H_INPUT)
-        self.station_combo.setToolTip("Select test station ID")
-        self.station_combo.currentIndexChanged.connect(self._update_station_display)
+        # ── Station detail block (hidden in OP mode) ────────────
+        self._station_detail_widget = QWidget()
+        detail_lay = QVBoxLayout(self._station_detail_widget)
+        detail_lay.setContentsMargins(0, 0, 0, 0)
+        detail_lay.setSpacing(6)
 
-        h_sta = QHBoxLayout()
-        h_sta.setContentsMargins(0, 0, 0, 0)
-        h_sta.setSpacing(5)
-        lbl_sta = QLabel("STA")
-        lbl_sta.setObjectName("rowTag")
-        lbl_sta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        h_sta.addWidget(lbl_sta)
-        h_sta.addWidget(self.station_combo, stretch=1)
-        lay.addLayout(h_sta)
+        # 4× SRC
+        self.src_inputs = {}
+        self._btn_srcs  = {}
+        for sta_id in STATION_IDS:
+            edit = QLineEdit()
+            edit.setText(DEFAULT_SRCS[sta_id])
+            edit.setFixedHeight(_H_INPUT)
+            edit.setToolTip(f"STA{sta_id} 來源目錄（程式自動找 Log_All.txt）")
+            btn = browse_btn(lambda _c=False, s=sta_id: self._browse_src(s))
+            self.src_inputs[sta_id] = edit
+            self._btn_srcs[sta_id]  = btn
+            detail_lay.addLayout(row(f"S{sta_id}", edit, btn))
 
-        # Context summary — lets operators confirm settings without opening Eng mode
+        # 4× OUT
+        self.out_inputs = {}
+        self._btn_outs  = {}
+        for sta_id in STATION_IDS:
+            edit = QLineEdit()
+            edit.setPlaceholderText(f"E:\\TN131_LOG_BACKUP\\{sta_id}\\<WOU>")
+            edit.setFixedHeight(_H_INPUT)
+            edit.setToolTip(f"STA{sta_id} 輸出目錄")
+            btn = browse_btn(lambda _c=False, s=sta_id: self._browse_out(s))
+            self.out_inputs[sta_id] = edit
+            self._btn_outs[sta_id]  = btn
+            detail_lay.addLayout(row(f"O{sta_id}", edit, btn))
+
+        lay.addWidget(self._station_detail_widget)
+
+        # Context summary
         self._lbl_src_summary = QLabel("—")
         self._lbl_src_summary.setObjectName("srcSummary")
         lay.addWidget(self._lbl_src_summary)
@@ -1360,21 +1578,6 @@ class RealtimeSplitterApp(QMainWindow):
             b.clicked.connect(slot)
             return b
 
-        def row(tag, edit_widget, btn=None):
-            h = QHBoxLayout()
-            h.setContentsMargins(0, 0, 0, 0)
-            h.setSpacing(5)
-            lbl = QLabel(tag)
-            lbl.setObjectName("rowTag")
-            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            h.addWidget(lbl)
-            h.addWidget(edit_widget, stretch=1)
-            if btn is not None:
-                h.addWidget(btn)
-            else:
-                h.addSpacing(29)
-            return h
-
         eng_frame = QFrame()
         eng_frame.setObjectName("configPanel")
         outer = QHBoxLayout()
@@ -1386,22 +1589,6 @@ class RealtimeSplitterApp(QMainWindow):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(8)
         eng_frame.setVisible(False)
-
-        # SRC
-        self.file_input = QLineEdit()
-        self.file_input.setPlaceholderText("Log_ALL.txt …")
-        self.file_input.setReadOnly(True)
-        self.file_input.setFixedHeight(_H_INPUT)
-        self._btn_src = browse_btn(self.browse_source, QStyle.SP_DialogOpenButton)
-        lay.addLayout(row("SRC", self.file_input, self._btn_src))
-
-        # OUT
-        self.dir_output_input = QLineEdit()
-        self.dir_output_input.setText(
-            os.path.join(os.path.expanduser('~'), 'Documents', 'Log_Output'))
-        self.dir_output_input.setFixedHeight(_H_INPUT)
-        self._btn_out = browse_btn(self.browse_output)
-        lay.addLayout(row("OUT", self.dir_output_input, self._btn_out))
 
         # DST + interval
         self.dir_dest_input = QLineEdit()
@@ -1458,6 +1645,11 @@ class RealtimeSplitterApp(QMainWindow):
         h_cfg.setSpacing(8)
         h_cfg.addStretch(1)
 
+        self.btn_reset_defaults = QPushButton("預設路徑")
+        self.btn_reset_defaults.setObjectName("configBtn")
+        self.btn_reset_defaults.setToolTip("將 S10–S40 恢復預設 SRC，O10–O40 恢復 OUT_BASE_ROOT\\WOU")
+        self.btn_reset_defaults.clicked.connect(self._on_reset_defaults)
+
         self.btn_export = QPushButton("匯出設定")
         self.btn_export.setObjectName("configBtn")
         self.btn_export.clicked.connect(self._export_config)
@@ -1471,6 +1663,7 @@ class RealtimeSplitterApp(QMainWindow):
         self.btn_save_station.setToolTip("Save all settings (SRC/OUT/STA/DST/SSH)")
         self.btn_save_station.clicked.connect(self._save_all_settings)
 
+        h_cfg.addWidget(self.btn_reset_defaults)
         h_cfg.addWidget(self.btn_import)
         h_cfg.addWidget(self.btn_export)
         h_cfg.addWidget(self.btn_save_station)
@@ -1482,22 +1675,21 @@ class RealtimeSplitterApp(QMainWindow):
         op_frame  = self._mk_op_panel()
         eng_frame = self._mk_eng_panel()
 
-        self._config_widgets = [
-            self.file_input, self._btn_src,
-            self.dir_output_input, self._btn_out,
-            self.wo_input,
-            self.station_combo,
-            self.btn_import, self.btn_export, self.btn_save_station,
-            self.dir_dest_input, self._btn_dst,
-            self.spin_interval,
-            self.btn_ssh_test,
-        ]
+        self._config_widgets = (
+            list(self.src_inputs.values()) + list(self._btn_srcs.values()) +
+            list(self.out_inputs.values()) + list(self._btn_outs.values()) +
+            [self.wo_input, self.btn_reset_defaults,
+             self.btn_import, self.btn_export, self.btn_save_station,
+             self.dir_dest_input, self._btn_dst,
+             self.spin_interval, self.btn_ssh_test]
+        )
 
         self._restore_all_settings()
-        self._update_station_display()
+        self._update_src_summary()
 
-        # Sync panel visibility and lock button with restored preference
-        eng_frame.setVisible(not self._is_locked)
+        eng_visible = not self._is_locked
+        eng_frame.setVisible(eng_visible)
+        self._station_detail_widget.setVisible(eng_visible)
         self.btn_lock.setText(
             "🔒 簡易功能 (OP)" if self._is_locked else "🔓 進階功能 (ENG)"
         )
@@ -1654,18 +1846,19 @@ class RealtimeSplitterApp(QMainWindow):
 
     # ── Browse ────────────────────────────────────────────────
 
-    def browse_source(self):
-        p, _ = QFileDialog.getOpenFileName(
-            self, "Select source log file", "", "Text Files (*.txt);;All Files (*)")
+    def _browse_src(self, sta_id):
+        p = QFileDialog.getExistingDirectory(
+            self, f"選擇 STA{sta_id} 來源目錄", self.src_inputs[sta_id].text())
         if p:
-            self.file_input.setText(os.path.normpath(p))
-            self._log(f"SRC → {p}")
+            self.src_inputs[sta_id].setText(os.path.normpath(p))
+            self._log(f"STA{sta_id} SRC → {p}")
             self._update_src_summary()
 
-    def browse_output(self):
-        p = QFileDialog.getExistingDirectory(self, "Select output folder")
+    def _browse_out(self, sta_id):
+        p = QFileDialog.getExistingDirectory(
+            self, f"選擇 STA{sta_id} 輸出目錄", self.out_inputs[sta_id].text())
         if p:
-            self.dir_output_input.setText(os.path.normpath(p))
+            self.out_inputs[sta_id].setText(os.path.normpath(p))
 
     def browse_dest(self):
         p = QFileDialog.getExistingDirectory(self, "Select destination folder")
@@ -1673,61 +1866,105 @@ class RealtimeSplitterApp(QMainWindow):
             self.dir_dest_input.setText(os.path.normpath(p))
             self._update_src_summary()
 
-    # ── Station persistence ───────────────────────────────────
+    # ── WOU management ───────────────────────────────────────
+
+    def _check_wou_on_startup(self):
+        saved_wou = QSettings("SoloPIXI", "LogSplitter").value("wou", "")
+        if saved_wou:
+            reply = QMessageBox.question(
+                self, "工單號碼確認",
+                f"上次使用的工單號碼：{saved_wou}\n\n"
+                "是否沿用此工單？\n（按「否」可輸入新工單號碼）",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if reply == QMessageBox.No:
+                self._prompt_wou(allow_cancel=False, current="")
+            # Yes → keep saved_wou already loaded by _restore_all_settings
+            return
+        self._prompt_wou(allow_cancel=False)
+
+    def _prompt_wou(self, allow_cancel=True, current=""):
+        dlg = WouInputDialog(self, current_wou=current, allow_cancel=allow_cancel)
+        if dlg.exec_() == QDialog.Accepted:
+            wou = dlg.value()
+            self.wo_input.setText(wou)
+            QSettings("SoloPIXI", "LogSplitter").setValue("wou", wou)
+            self._update_btn_new_wo_label()
+            return wou
+        return None
+
+    def _on_wou_changed(self, text):
+        wou = text.strip()
+        for sta_id in STATION_IDS:
+            edit = self.out_inputs[sta_id]
+            cur  = edit.text().strip()
+            base = os.path.normpath(OUT_BASE_ROOTS[sta_id])
+            # Auto-update only when blank or the path is directly under the base root
+            if not cur or os.path.dirname(os.path.normpath(cur)) == base:
+                edit.setText(os.path.join(OUT_BASE_ROOTS[sta_id], wou) if wou else "")
+        self._update_btn_new_wo_label()
+
+    def _on_reset_defaults(self):
+        wou = self.wo_input.text().strip()
+        for sta_id in STATION_IDS:
+            self.src_inputs[sta_id].setText(DEFAULT_SRCS[sta_id])
+            self.out_inputs[sta_id].setText(
+                os.path.join(OUT_BASE_ROOTS[sta_id], wou) if wou else "")
+
+    def _update_btn_new_wo_label(self):
+        wou = self.wo_input.text().strip() if hasattr(self, 'wo_input') else ""
+        if hasattr(self, 'btn_new_wo'):
+            self.btn_new_wo.setText(f"新增工單 [{wou}]" if wou else "新增工單 [—]")
+        if hasattr(self, '_station_id_lbl'):
+            self._station_id_lbl.setText(f"WOU : {wou}" if wou else "")
+        title = f"Log Splitter — Live  |  WOU : {wou}" if wou else "Log Splitter — Live"
+        self.setWindowTitle(title)
+
+    # ── Settings persistence ──────────────────────────────────
 
     def _save_all_settings(self):
-        """Save all settings: SRC, OUT, STA, DST, and SSH connection state."""
-        settings = QSettings("SoloPIXI", "LogSplitter")
-        
-        # Save paths
-        settings.setValue("src_path", self.file_input.text())
-        settings.setValue("out_path", self.dir_output_input.text())
-        settings.setValue("dst_path", self.dir_dest_input.text())
-        settings.setValue("station_id", self.station_combo.currentText())
-        settings.setValue("wo", self.wo_input.text())
-        
-        # Save SSH LED state
-        ssh_state = self._ssh_led.objectName()  # sshLedIdle, sshLedOk, sshLedFail
-        settings.setValue("ssh_state", ssh_state)
-        settings.setValue("is_locked", self._is_locked)
-        settings.setValue("dark_mode", self._dark_mode)
-
-        self._log(f"Settings saved: STA{self.station_combo.currentText()}, SRC, OUT, DST, SSH")
-        self._update_src_summary()
-
+        s = QSettings("SoloPIXI", "LogSplitter")
+        s.setValue("wou",       self.wo_input.text())
+        s.setValue("dst_path",  self.dir_dest_input.text())
+        s.setValue("interval",  self.spin_interval.value())
+        s.setValue("ssh_state", self._ssh_led.objectName())
+        s.setValue("is_locked", self._is_locked)
+        s.setValue("dark_mode", self._dark_mode)
+        for sta_id in STATION_IDS:
+            s.setValue(f"src_{sta_id}", self.src_inputs[sta_id].text())
+            s.setValue(f"out_{sta_id}", self.out_inputs[sta_id].text())
+        self._log("Settings saved.")
         orig = self.btn_save_station.text()
         self.btn_save_station.setText("✓")
         QTimer.singleShot(500, lambda: self.btn_save_station.setText(orig))
 
     def _restore_all_settings(self):
-        """Restore all saved settings from previous session."""
-        settings = QSettings("SoloPIXI", "LogSplitter")
-        
-        # Restore paths
-        src_path = settings.value("src_path", "")
-        if src_path:
-            self.file_input.setText(src_path)
-        
-        out_path = settings.value("out_path", "")
-        if out_path:
-            self.dir_output_input.setText(out_path)
-        
-        dst_path = settings.value("dst_path", DEFAULT_RSYNC_PATH)
-        if dst_path:
-            self.dir_dest_input.setText(dst_path)
+        s = QSettings("SoloPIXI", "LogSplitter")
 
-        wo = settings.value("wo", "")
-        if wo:
-            self.wo_input.setText(wo)
-        
-        # Restore station
-        saved_station = settings.value("station_id", None)
-        if saved_station and saved_station in STATION_OPTIONS:
-            idx = STATION_OPTIONS.index(saved_station)
-            self.station_combo.setCurrentIndex(idx)
-        
-        # Restore SSH LED state
-        ssh_state = settings.value("ssh_state", "sshLedIdle")
+        wou = s.value("wou", "")
+        if wou:
+            self.wo_input.blockSignals(True)
+            self.wo_input.setText(wou)
+            self.wo_input.blockSignals(False)
+
+        dst = s.value("dst_path", DEFAULT_RSYNC_PATH)
+        self.dir_dest_input.setText(dst or DEFAULT_RSYNC_PATH)
+
+        interval = s.value("interval", DEFAULT_POLL_INTERVAL, type=int)
+        self.spin_interval.setValue(interval)
+
+        for sta_id in STATION_IDS:
+            saved_src = s.value(f"src_{sta_id}", DEFAULT_SRCS[sta_id])
+            self.src_inputs[sta_id].setText(saved_src or DEFAULT_SRCS[sta_id])
+            saved_out = s.value(f"out_{sta_id}", "")
+            if saved_out:
+                self.out_inputs[sta_id].setText(saved_out)
+            elif wou:
+                self.out_inputs[sta_id].setText(
+                    os.path.join(OUT_BASE_ROOTS[sta_id], wou))
+
+        ssh_state = s.value("ssh_state", "sshLedIdle")
         if ssh_state == "sshLedOk":
             self._set_ssh_led("ok")
         elif ssh_state == "sshLedFail":
@@ -1735,18 +1972,16 @@ class RealtimeSplitterApp(QMainWindow):
         else:
             self._set_ssh_led("idle")
 
-        # Restore lock mode (ENG=False / OP=True); default ENG on fresh install
-        self._is_locked = settings.value("is_locked", False, type=bool)
+        self._is_locked = s.value("is_locked", False, type=bool)
 
-        # Restore dark mode
-        saved_dark = settings.value("dark_mode", False, type=bool)
+        saved_dark = s.value("dark_mode", False, type=bool)
         if saved_dark != self._dark_mode:
             self._dark_mode = saved_dark
             self.setStyleSheet(STYLESHEET_DARK if self._dark_mode else STYLESHEET_LIGHT)
             if hasattr(self, '_btn_theme'):
                 self._btn_theme.setText("☀" if self._dark_mode else "🌙")
 
-        self._update_src_summary()
+        self._update_btn_new_wo_label()
 
     # ── Collapse / Expand ────────────────────────────────────
 
@@ -1772,58 +2007,41 @@ class RealtimeSplitterApp(QMainWindow):
         self.resize(self.width(), h)
 
     def _expand_ui(self):
-        # Unlock constraints before showing widgets
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
         self._op_frame.setVisible(True)
-        if not getattr(self, '_is_locked', False):
-            self._eng_frame.setVisible(True)
+        eng_visible = not getattr(self, '_is_locked', False)
+        self._eng_frame.setVisible(eng_visible)
+        self._station_detail_widget.setVisible(eng_visible)
         self._status_frame.setVisible(True)
         self._log_frame.setVisible(True)
         self._upload_log_frame.setVisible(True)
-        
         self.btn_expand.setVisible(False)
         self.btn_collapse.setVisible(True)
         self._lbl_mini_stats.setVisible(False)
-        
-        # Restore original min/max and pre-collapse height
-        self.setMinimumHeight(297)
-        self.setMaximumHeight(800)
-        self.resize(self.width(), getattr(self, '_pre_collapse_height', 418))
-
-    # ── Station ID header display ─────────────────────────────
-
-    def _update_station_display(self):
-        sid = self.station_combo.currentText()
-        self._station_id_lbl.setText(f"STATION ID : {sid}")
-        self.setWindowTitle(f"Log Splitter — Live  |  STATION ID : {sid}")
-        self._update_src_summary()
+        self.setMinimumHeight(400)
+        self.setMaximumHeight(960)
+        self.resize(self.width(), getattr(self, '_pre_collapse_height', 720))
 
     def _update_src_summary(self):
-        """Refresh the OP-panel context line: SRC → STA → DST (abbreviated)."""
         if not hasattr(self, '_lbl_src_summary'):
             return
-        src = self.file_input.text().strip() if hasattr(self, 'file_input') else ""
-        sta = self.station_combo.currentText() if hasattr(self, 'station_combo') else "—"
         dst = self.dir_dest_input.text().strip() if hasattr(self, 'dir_dest_input') else ""
-        src_short = os.path.basename(src) if src else "—"
         if ':' in dst:
             dst_part = dst.split(':')[-1].rstrip('/')
-            dst_short = ('…' + dst_part[-20:]) if len(dst_part) > 20 else dst_part
+            dst_short = ('…' + dst_part[-18:]) if len(dst_part) > 18 else dst_part
         elif dst:
             dst_short = os.path.basename(dst.rstrip('/\\')) or dst
         else:
             dst_short = "—"
-        self._lbl_src_summary.setText(f"{src_short}  →  STA{sta}  →  {dst_short}")
+        self._lbl_src_summary.setText(f"4 stations  →  DST: {dst_short}")
 
     def _toggle_lock(self):
         self._is_locked = not self._is_locked
-        if self._is_locked:
-            self.btn_lock.setText("🔒 簡易功能 (OP)")
-            self._eng_frame.setVisible(False)
-        else:
-            self.btn_lock.setText("🔓 進階功能 (ENG)")
-            self._eng_frame.setVisible(True)
+        eng_visible = not self._is_locked
+        self.btn_lock.setText("🔒 簡易功能 (OP)" if self._is_locked else "🔓 進階功能 (ENG)")
+        self._eng_frame.setVisible(eng_visible)
+        self._station_detail_widget.setVisible(eng_visible)
         QSettings("SoloPIXI", "LogSplitter").setValue("is_locked", self._is_locked)
 
     def _toggle_theme(self):
@@ -1835,17 +2053,17 @@ class RealtimeSplitterApp(QMainWindow):
     def _export_config(self):
         p, _ = QFileDialog.getSaveFileName(self, "匯出設定檔", "config.json", "JSON Files (*.json)")
         if p:
-            config_data = {
-                "src_path":   self.file_input.text(),
-                "out_path":   self.dir_output_input.text(),
-                "dst_path":   self.dir_dest_input.text(),
-                "interval":   self.spin_interval.value(),
-                "station_id": self.station_combo.currentText(),
-                "wo":         self.wo_input.text(),
+            data = {
+                "wou":      self.wo_input.text(),
+                "dst_path": self.dir_dest_input.text(),
+                "interval": self.spin_interval.value(),
             }
+            for sta_id in STATION_IDS:
+                data[f"src_{sta_id}"] = self.src_inputs[sta_id].text()
+                data[f"out_{sta_id}"] = self.out_inputs[sta_id].text()
             try:
                 with open(p, 'w', encoding='utf-8') as f:
-                    json.dump(config_data, f, indent=4)
+                    json.dump(data, f, indent=4)
                 self._log(f"設定檔已匯出至: {p}")
             except Exception as e:
                 self._log(f"匯出設定檔失敗: {e}")
@@ -1855,16 +2073,15 @@ class RealtimeSplitterApp(QMainWindow):
         if p:
             try:
                 with open(p, 'r', encoding='utf-8') as f:
-                    config_data = json.load(f)
-                if "src_path"   in config_data: self.file_input.setText(config_data["src_path"])
-                if "out_path"   in config_data: self.dir_output_input.setText(config_data["out_path"])
-                if "dst_path"   in config_data: self.dir_dest_input.setText(config_data["dst_path"])
-                if "interval"   in config_data: self.spin_interval.setValue(config_data["interval"])
-                if "station_id" in config_data:
-                    sid = config_data["station_id"]
-                    if sid in STATION_OPTIONS:
-                        self.station_combo.setCurrentIndex(STATION_OPTIONS.index(sid))
-                if "wo"         in config_data: self.wo_input.setText(config_data["wo"])
+                    data = json.load(f)
+                if "wou"      in data: self.wo_input.setText(data["wou"])
+                if "dst_path" in data: self.dir_dest_input.setText(data["dst_path"])
+                if "interval" in data: self.spin_interval.setValue(data["interval"])
+                for sta_id in STATION_IDS:
+                    if f"src_{sta_id}" in data:
+                        self.src_inputs[sta_id].setText(data[f"src_{sta_id}"])
+                    if f"out_{sta_id}" in data:
+                        self.out_inputs[sta_id].setText(data[f"out_{sta_id}"])
                 self._log(f"設定檔已匯入從: {p}")
                 self._update_src_summary()
             except Exception as e:
@@ -1985,55 +2202,47 @@ class RealtimeSplitterApp(QMainWindow):
     # ── Watcher control ───────────────────────────────────────
 
     def _validate(self):
-        src = self.file_input.text().strip()
-        out = self.dir_output_input.text().strip()
-        if not src:
-            QMessageBox.critical(self, "Error", "Source file not set.", QMessageBox.Ok)
+        if not self.wo_input.text().strip():
+            QMessageBox.critical(self, "Error", "請先設定工單號碼 (WOU)。", QMessageBox.Ok)
             return False
-        if not os.path.isfile(src):
-            QMessageBox.critical(self, "Error", "Source file not found.", QMessageBox.Ok)
-            return False
-        if not out:
-            QMessageBox.critical(self, "Error", "Output folder not set.", QMessageBox.Ok)
-            return False
+        for sta_id in STATION_IDS:
+            src_dir = self.src_inputs[sta_id].text().strip()
+            if not src_dir:
+                QMessageBox.critical(self, "Error",
+                    f"STA{sta_id} 來源目錄未設定。", QMessageBox.Ok)
+                return False
+            if not os.path.isdir(src_dir):
+                QMessageBox.critical(self, "Error",
+                    f"STA{sta_id} 來源目錄不存在：\n{src_dir}", QMessageBox.Ok)
+                return False
+            if not self.out_inputs[sta_id].text().strip():
+                QMessageBox.critical(self, "Error",
+                    f"STA{sta_id} 輸出目錄未設定。", QMessageBox.Ok)
+                return False
         return True
+
+    def _ensure_log_file(self, src_dir):
+        path = os.path.join(src_dir, "Log_All.txt")
+        if not os.path.exists(path):
+            try:
+                open(path, 'a', encoding='utf-8').close()
+                self._log(f"Created empty {path}")
+            except Exception as e:
+                self._log(f"WARN  Cannot create {path}: {e}")
+        return path
 
     def start_watching(self):
         if not self._validate():
             return
 
         dst = self.dir_dest_input.text().strip()
-        if dst and is_rsync_path(dst) and self._ssh_led_state == "fail":
-            reply = QMessageBox.question(
-                self, "DST 連線異常",
-                f"SSH 連線測試失敗，無法連線到：\n{dst}\n\n"
-                "仍要繼續？（檔案將只寫入本機 OUT 目錄，不上傳）",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if reply == QMessageBox.No:
-                return
-
-        out = self.dir_output_input.text().strip()
-        station_id = self.station_combo.currentText()
-        effective_out = resolve_out_dir(out, station_id)
-        os.makedirs(effective_out, exist_ok=True)
-        self._seen_files = scan_existing_files(effective_out)
         self._session_written = 0
-        self._session_synced = 0
+        self._session_synced  = 0
         self._lbl_written.setText("0")
         self._lbl_synced.setText("0")
-        self._pending_split = False
 
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        for w in self._config_widgets:
-            w.setEnabled(False)
-
-        # Start UploadThread if DST is configured
-        dst = self.dir_dest_input.text().strip()
         if dst:
-            self._upload_queue = queue.Queue()
+            self._upload_queue  = queue.Queue()
             self._upload_thread = UploadThread(self._upload_queue, dst)
             self._upload_thread.file_uploaded.connect(self._on_file_uploaded)
             self._upload_thread.upload_failed.connect(self._on_upload_failed)
@@ -2042,25 +2251,35 @@ class RealtimeSplitterApp(QMainWindow):
             self._upload_thread.start()
             self.btn_upload_stop.setEnabled(True)
         else:
-            self._upload_queue = None
+            self._upload_queue  = None
             self._upload_thread = None
 
-        self._set_dot("watching")
         interval = self.spin_interval.value()
-        self._watcher_thread = WatcherThread(
-            self.file_input.text().strip(), interval)
-        self._watcher_thread.file_changed.connect(self._on_file_changed)
-        self._watcher_thread.tick.connect(self._on_tick)
-        self._watcher_thread.start()
+        for sta_id in STATION_IDS:
+            src_dir  = self.src_inputs[sta_id].text().strip()
+            out_dir  = self.out_inputs[sta_id].text().strip()
+            src_file = self._ensure_log_file(src_dir)
+            os.makedirs(out_dir, exist_ok=True)
+            sta_sub = os.path.join(out_dir, f"STA{sta_id}")
+            self._seen_files[sta_id]     = scan_existing_files(sta_sub)
+            self._pending_splits[sta_id] = False
+            watcher = WatcherThread(src_file, interval)
+            watcher.file_changed.connect(
+                lambda _c=False, s=sta_id: self._on_file_changed(s))
+            watcher.tick.connect(self._on_tick)
+            watcher.start()
+            self._watcher_threads[sta_id] = watcher
+            self._log(f"STA{sta_id}: Watching {src_file}  →  {out_dir}")
 
-        src = self.file_input.text().strip()
-        self._log(f"Watching  {src}  every {interval}s")
-        self._log(f"OUT  {effective_out}" + (f"  →  DST  {dst}" if dst else ""))
-        self._log(f"Seeded {len(self._seen_files)} existing file(s) — will skip")
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        for w in self._config_widgets:
+            w.setEnabled(False)
 
-        # Run an immediate first split to catch current content right away
-        self._log("Initial scan starting…")
-        self._launch_split()
+        self._set_dot("watching")
+        self._log(f"All 4 stations watching every {interval}s")
+        for sta_id in STATION_IDS:
+            self._launch_split(sta_id)
 
     def stop_watching(self, force: bool = False):
         if not force:
@@ -2068,24 +2287,24 @@ class RealtimeSplitterApp(QMainWindow):
             if q_depth > 0:
                 reply = QMessageBox.question(
                     self, "停止確認",
-                    f"上傳佇列還有 {q_depth} 個檔案等待處理，確定停止？\n"
-                    "（停止後尚未上傳的檔案不會自動重試）",
+                    f"上傳佇列還有 {q_depth} 個檔案等待處理，確定停止？",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
                 if reply == QMessageBox.No:
                     return
 
-        if self._watcher_thread:
-            self._watcher_thread.stop()
-            self._watcher_thread.wait(3000)
-            self._watcher_thread = None
+        for sta_id in list(self._watcher_threads.keys()):
+            t = self._watcher_threads.pop(sta_id, None)
+            if t:
+                t.stop()
+                t.wait(3000)
+
         if self._upload_thread:
             self._upload_thread.stop()
             self._upload_thread.wait(3000)
             self._upload_thread = None
         self._upload_queue = None
-        self._pending_split = False
         self._set_dot("idle")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
@@ -2093,7 +2312,7 @@ class RealtimeSplitterApp(QMainWindow):
         for w in self._config_widgets:
             w.setEnabled(True)
         self._on_eta_updated("—")
-        self._log("Watcher stopped.")
+        self._log("All watchers stopped.")
 
     # ── Helpers ───────────────────────────────────────────────
 
@@ -2125,42 +2344,44 @@ class RealtimeSplitterApp(QMainWindow):
         if hasattr(self, '_lbl_mini_stats'):
             self._lbl_mini_stats.setText(f"| 分割: {self._session_written} | 上傳: {self._session_synced}")
 
-    def _launch_split(self):
+    def _launch_split(self, sta_id):
         self._set_dot("busy")
-        self._pending_split = False
-        station_id = self.station_combo.currentText()
-        wo = self.wo_input.text().strip()
-        wo_dest = get_wo_dest(self.dir_dest_input.text().strip(), wo) if wo else None
-        self._split_thread = SplitCopyThread(
-            self.file_input.text().strip(),
-            self.dir_output_input.text().strip(),
+        self._pending_splits[sta_id] = False
+        src_file = os.path.join(self.src_inputs[sta_id].text().strip(), "Log_All.txt")
+        out_dir  = self.out_inputs[sta_id].text().strip()
+        wou      = self.wo_input.text().strip()
+        dst      = self.dir_dest_input.text().strip()
+        wo_dest  = get_wo_dest(dst, wou) if wou and dst else None
+        t = SplitCopyThread(
+            src_file, out_dir,
             self._upload_queue,
-            set(self._seen_files),
-            station_id,
-            wo,
-            wo_dest,
+            set(self._seen_files.get(sta_id, set())),
+            sta_id,
+            wo=wou or None,
+            wo_dest=wo_dest,
         )
-        self._split_thread.copy_ok.connect(self._on_copy_ok)
-        self._split_thread.copy_fail.connect(self._on_copy_fail)
-        self._split_thread.split_done.connect(self._on_split_done)
-        self._split_thread.file_uploaded.connect(self._on_file_uploaded)  # no-DST path
-        self._split_thread.finished.connect(self._on_split_thread_finished)
-        self._split_thread.start()
+        t.copy_ok.connect(self._on_copy_ok)
+        t.copy_fail.connect(self._on_copy_fail)
+        t.split_done.connect(lambda stats, s=sta_id: self._on_split_done(s, stats))
+        t.file_uploaded.connect(self._on_file_uploaded)
+        t.finished.connect(lambda s=sta_id: self._on_split_thread_finished(s))
+        t.start()
+        self._split_threads[sta_id] = t
 
     # ── Slots — WatcherThread ─────────────────────────────────
 
     def _on_tick(self):
-        """Called on every poll cycle — keeps the 'checked' timestamp alive."""
         self._lbl_checked.setText(datetime.now().strftime("%H:%M:%S"))
 
-    def _on_file_changed(self):
+    def _on_file_changed(self, sta_id):
         self._lbl_checked.setText(datetime.now().strftime("%H:%M:%S"))
-        if self._split_thread and self._split_thread.isRunning():
-            self._pending_split = True
-            self._log("Change detected — queued")
+        running = self._split_threads.get(sta_id)
+        if running and running.isRunning():
+            self._pending_splits[sta_id] = True
+            self._log(f"STA{sta_id} change detected — queued")
             return
-        self._log("Change detected → splitting")
-        self._launch_split()
+        self._log(f"STA{sta_id} change detected → splitting")
+        self._launch_split(sta_id)
 
     # ── Slots — SplitCopyThread ───────────────────────────────
 
@@ -2182,7 +2403,7 @@ class RealtimeSplitterApp(QMainWindow):
         self._upload_count_lbl.setText(f"| Total: {self._upload_count}")
         ts = datetime.now().strftime("%H:%M:%S")
         self.upload_log.append(f"[{ts}]  {filename} , uploaded")
-        if self._upload_thread:  # DST path — count as synced
+        if self._upload_thread:
             self._session_synced += 1
             self._lbl_synced.setText(str(self._session_synced))
             self._update_mini_stats()
@@ -2206,44 +2427,131 @@ class RealtimeSplitterApp(QMainWindow):
         self._on_queue_stats(0, 0)
         self._log("Upload stopped by user.")
 
-    def _on_split_done(self, stats):
+    def _on_split_done(self, sta_id, stats):
+        seen = self._seen_files.setdefault(sta_id, set())
         for name in stats.get("new_file_names", []):
-            self._seen_files.add(name)
+            seen.add(name)
             self._session_written += 1
-            self._log(f"  ↑  {name}")
-        # Rolling cap: keep memory bounded on long-running sessions
-        if len(self._seen_files) > 5000:
-            self._seen_files = set(list(self._seen_files)[-3000:])
+            self._log(f"  STA{sta_id} ↑  {name}")
+        if len(seen) > 5000:
+            self._seen_files[sta_id] = set(list(seen)[-3000:])
         self._lbl_written.setText(str(self._session_written))
         self._update_mini_stats()
-        if self._watcher_thread and self._watcher_thread.isRunning():
+        if any(t and t.isRunning() for t in self._watcher_threads.values()):
             self._set_dot("watching")
         q_depth = self._upload_queue.qsize() if self._upload_queue else 0
         self._log(
-            f"Done  +{stats['new_files']} new  "
-            f"queued {q_depth}  "
-            f"skip {stats['skipped']}  "
-            f"({stats['total_segs']} segs)"
+            f"STA{sta_id} Done  +{stats['new_files']} new  "
+            f"queued {q_depth}  skip {stats['skipped']}"
         )
 
-    def _on_split_thread_finished(self):
-        self._split_thread = None
-        if self._pending_split:
-            self._log("Running queued split…")
-            self._launch_split()
+    def _on_split_thread_finished(self, sta_id):
+        self._split_threads.pop(sta_id, None)
+        if self._pending_splits.get(sta_id):
+            self._log(f"STA{sta_id} running queued split…")
+            self._launch_split(sta_id)
+
+    # ── 結批 ─────────────────────────────────────────────────
+
+    def _on_close_batch(self):
+        wou = self.wo_input.text().strip()
+        if not wou:
+            QMessageBox.warning(self, "結批", "請先設定工單號碼 (WOU)。", QMessageBox.Ok)
+            return
+
+        if self._watcher_threads:
+            reply = QMessageBox.question(
+                self, "結批 — 停止監控",
+                "執行結批前需停止監控。\n是否停止監控並繼續結批？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if reply == QMessageBox.No:
+                return
+            self.stop_watching(force=True)
+
+        errors = []
+        moved_sta = []
+        for sta_id in STATION_IDS:
+            src_dir = self.src_inputs[sta_id].text().strip()
+            out_dir = self.out_inputs[sta_id].text().strip()
+
+            if not os.path.isdir(src_dir):
+                errors.append(f"STA{sta_id}: 來源目錄不存在 → {src_dir}")
+                continue
+            if not os.path.isdir(out_dir):
+                errors.append(
+                    f"STA{sta_id}: OUT 目錄不存在 → {out_dir}\n"
+                    f"         （請先手動建立目錄）")
+                continue
+
+            # Only move files listed in CLOSE_BATCH_FILES
+            count = 0
+            for filename in CLOSE_BATCH_FILES:
+                src_path = os.path.join(src_dir, filename)
+                if not os.path.isfile(src_path):
+                    continue  # file absent in this station — skip silently
+                dst_path = os.path.join(out_dir, filename)
+                try:
+                    if os.path.exists(dst_path):
+                        base, ext = os.path.splitext(filename)
+                        dst_path = os.path.join(out_dir, f"{base}_dup{ext}")
+                    shutil.move(src_path, dst_path)
+                    count += 1
+                except Exception as e:
+                    errors.append(f"STA{sta_id}: 搬移 {filename} 失敗 — {e}")
+
+            if count:
+                self._log(f"STA{sta_id} 結批: 搬移 {count} 個檔案 → {out_dir}")
+                moved_sta.append(f"STA{sta_id}({count})")
+            else:
+                self._log(f"STA{sta_id} 結批: 無符合檔案，跳過")
+
+        if errors:
+            QMessageBox.warning(
+                self, "結批 — 部分錯誤",
+                "以下站發生錯誤：\n\n" + "\n".join(errors),
+                QMessageBox.Ok,
+            )
+        self._log(f"結批完成: {', '.join(moved_sta) if moved_sta else '無資料'}")
+
+    # ── 新增工單 ─────────────────────────────────────────────
+
+    def _on_new_wo(self):
+        has_unarchived = []
+        for sta_id in STATION_IDS:
+            src_dir = self.src_inputs[sta_id].text().strip()
+            log_path = os.path.join(src_dir, "Log_All.txt")
+            if src_dir and os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
+                has_unarchived.append(f"STA{sta_id}")
+
+        if has_unarchived:
+            reply = QMessageBox.question(
+                self, "新增工單 — 確認結批",
+                f"以下站的 log 目錄仍有未結批的 Log_All.txt：\n"
+                f"  {', '.join(has_unarchived)}\n\n"
+                "請確認是否已完成結批？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply == QMessageBox.No:
+                return
+
+        new_wou = self._prompt_wou(allow_cancel=True, current="")
+        if new_wou:
+            self._save_all_settings()
+            self._log(f"新工單設定完成: {new_wou}")
 
     # ── Close ─────────────────────────────────────────────────
 
     def closeEvent(self, event):
-        # Stop SSH LED animation
         if self._ssh_led_timer:
             self._ssh_led_timer.stop()
-        
-        split_thread  = self._split_thread
+        split_threads = dict(self._split_threads)
         upload_thread = self._upload_thread
-        self.stop_watching(force=True)  # skip queue dialog on app close
-        if split_thread and split_thread.isRunning():
-            split_thread.wait(5000)
+        self.stop_watching(force=True)
+        for t in split_threads.values():
+            if t and t.isRunning():
+                t.wait(5000)
         if upload_thread and upload_thread.isRunning():
             upload_thread.wait(5000)
         event.accept()
