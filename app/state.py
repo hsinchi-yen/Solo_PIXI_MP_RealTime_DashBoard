@@ -23,9 +23,7 @@ class DashboardState:
         self.fail_records: list[ParsedLog] = []
         self.stop_records: list[ParsedLog] = []
 
-        self.recent_records: deque[ParsedLog] = deque(
-            maxlen=self._cfg.recent_records_limit
-        )
+        self.recent_records: deque[ParsedLog] = deque()
 
         # Failure analysis: measurement name → count (all FAIL records, diagnostic)
         self.failure_stats: Counter = Counter()

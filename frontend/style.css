@@ -506,7 +506,7 @@ select:focus-visible,
 /* ── MAIN GRID ───────────────────────────────────────────────────── */
 .main-grid {
   display: grid;
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: 1fr 2fr;
   gap: 12px;
   padding: 12px 20px;
   flex: 1;
@@ -615,11 +615,12 @@ select:focus-visible,
   position: sticky;
   top: 0;
 }
-.records-table colgroup .col-station { width: 73px; }
+.records-table colgroup .col-station { width: 122px; }
+.records-table colgroup .col-date   { width: 92px; }
 .records-table colgroup .col-time   { width: 72px; }
-.records-table colgroup .col-mac1   { width: 120px; }
-.records-table colgroup .col-mac2   { width: 120px; }
-.records-table colgroup .col-result { width: 64px; }
+.records-table colgroup .col-mac1   { width: 122px; }
+.records-table colgroup .col-mac2   { width: 122px; }
+.records-table colgroup .col-result { width: 66px; }
 .records-table colgroup .col-dur    { width: 72px; }
 .records-table colgroup .col-fail   { width: auto; }
 
@@ -678,6 +679,76 @@ select:focus-visible,
 .row-stop > td:first-child { border-left: 3px solid var(--stop); }
 
 .table-scroll { overflow-y: auto; flex: 1; }
+
+/* ── COLUMN SORT HEADERS ─────────────────────────────────────────── */
+.records-table thead th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+.records-table thead th[data-sort]:hover {
+  background: #191924;
+  color: var(--text);
+}
+.sort-arrow {
+  display: inline-block;
+  font-size: 9px;
+  opacity: 0.4;
+  margin-left: 3px;
+  transition: opacity .15s;
+}
+.sort-arrow.active {
+  opacity: 1;
+  color: var(--info);
+}
+
+/* ── KEYWORD HIGHLIGHT ───────────────────────────────────────────── */
+mark {
+  background: rgba(251, 191, 36, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── FILTER ROW 2 (date range + duration) ────────────────────────── */
+.records-filters-row2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.filter-date-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.filter-date-input {
+  background: #111120;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  width: 126px;
+  color-scheme: dark;
+}
+.filter-dur-input {
+  background: #111120;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  width: 58px;
+}
+.filter-clear-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  margin-left: auto;
+}
 
 .chart-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 20px; }
 
@@ -829,9 +900,9 @@ select:focus-visible,
   flex-shrink: 0;
 }
 .stat-item { flex: 1; text-align: center; }
-.stat-value { font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+.stat-value { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
 .stat-label { font-size: 12px; letter-spacing: .1em; color: var(--text-dim); margin-top: 4px; }
-.stat-divider { width: 1px; background: var(--border); height: 52px; margin: 0 10px; }
+.stat-divider { width: 1px; background: var(--border); height: 40px; margin: 0 10px; }
 
 .stats-section {
   padding: 14px 20px;
@@ -853,7 +924,7 @@ select:focus-visible,
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 140px;
+  height: 110px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -953,6 +1024,10 @@ body.light-mode .filter-input { background: #fff; color: #111827; }
 body.light-mode .station-chip { background: #eef1ff; color: #374151; }
 body.light-mode .station-chip.active { background: #dde8ff; color: #0f3c8a; border-color: #93b2ef; }
 body.light-mode .toast { background: #fff; }
+body.light-mode .filter-date-input,
+body.light-mode .filter-dur-input  { background: #fff; color: #111827; color-scheme: light; }
+body.light-mode .records-table thead th[data-sort]:hover { background: #e0e2f0; }
+body.light-mode mark { background: rgba(202, 138, 4, 0.25); }
 
 /* ── TREND ARROWS ────────────────────────────────────────────────────────── */
 .kpi-trend { font-size: 22px; vertical-align: middle; }
@@ -1007,12 +1082,12 @@ body.light-mode .toast { background: #fff; }
 
   /* Stats panel — left */
   .stat-summary     { padding: 8px 14px; }
-  .stat-value       { font-size: 32px; }
-  .stat-divider     { height: 36px; }
+  .stat-value       { font-size: 26px; }
+  .stat-divider     { height: 30px; }
   .stat-label       { font-size: 10px; }
   .stats-section    { padding: 8px 14px; }
   .stats-section-title { font-size: 9px; margin-bottom: 6px; }
-  .hourly-chart     { height: 80px; }
+  .hourly-chart     { height: 72px; }
   .hourly-label     { font-size: 9px; }
   .dist-bar-wrap    { height: 16px; }
   .dist-label       { font-size: 11px; }
@@ -1027,8 +1102,9 @@ body.light-mode .toast { background: #fff; }
   .records-table    { font-size: 11px; }
   .records-table thead th  { padding: 4px 6px; font-size: 10px; }
   .record-row td    { padding: 3px 6px; }
-  .records-table colgroup .col-station { width: 62px; }
-  .records-table colgroup .col-time  { width: 62px; }
+  .records-table colgroup .col-station { width: 100px; }
+  .records-table colgroup .col-date  { width: 78px; }
+  .records-table colgroup .col-time  { width: 60px; }
   .records-table colgroup .col-mac1  { width: 100px; }
   .records-table colgroup .col-mac2  { width: 100px; }
   .records-table colgroup .col-result{ width: 54px; }
@@ -1069,11 +1145,11 @@ body.light-mode .toast { background: #fff; }
 
   /* Stats panel */
   .stat-summary     { padding: 11px 16px; }
-  .stat-value       { font-size: 38px; }
-  .stat-divider     { height: 42px; }
+  .stat-value       { font-size: 30px; }
+  .stat-divider     { height: 34px; }
   .stats-section    { padding: 10px 16px; }
   .stats-section-title { font-size: 10px; margin-bottom: 8px; }
-  .hourly-chart     { height: 105px; }
+  .hourly-chart     { height: 88px; }
   .dist-bar-wrap    { height: 19px; }
   .failure-chart    { padding: 10px 16px; gap: 9px; }
   .chart-bar-wrap   { height: 21px; }
@@ -1083,6 +1159,7 @@ body.light-mode .toast { background: #fff; }
   .records-table    { font-size: 11px; }
   .records-table thead th  { padding: 5px 7px; }
   .record-row td    { padding: 4px 7px; }
+  .records-table colgroup .col-date  { width: 85px; }
   .records-table colgroup .col-mac1  { width: 108px; }
   .records-table colgroup .col-mac2  { width: 108px; }
 
@@ -1099,11 +1176,11 @@ body.light-mode .toast { background: #fff; }
   .kpi-card         { padding: 12px 20px; }
   .kpi-trend        { font-size: 26px; }
 
-  .stat-value       { font-size: 56px; }
-  .stat-divider     { height: 60px; }
+  .stat-value       { font-size: 44px; }
+  .stat-divider     { height: 48px; }
   .stat-summary     { padding: 18px 24px; }
   .stats-section    { padding: 16px 24px; }
-  .hourly-chart     { height: 160px; }
+  .hourly-chart     { height: 130px; }
 
   .main-grid        { gap: 14px; padding: 14px 24px; }
 

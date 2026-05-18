@@ -11,7 +11,7 @@ const esc = s => String(s ?? '')
 // ── Constants ────────────────────────────────────────────────────────────────
 const YIELD_WARN = 90;
 const YIELD_CRIT = 80;
-const MAX_ROWS = 120;
+const MAX_ROWS = 500;
 const TREND_WINDOW_MS = 5 * 60 * 1000;
 const TREND_THRESHOLD = 0.5;
 
@@ -58,10 +58,14 @@ const confirmClose  = $('confirm-close');
 const confirmOk     = $('confirm-ok');
 const confirmCancel = $('confirm-cancel');
 const confirmMsg    = $('confirm-message');
-const filterStation = $('filter-station');
-const filterResult  = $('filter-result');
-const filterKeyword = $('filter-keyword');
+const filterStation    = $('filter-station');
+const filterResult     = $('filter-result');
+const filterKeyword    = $('filter-keyword');
 const filterAnomalyBtn = $('filter-anomaly-priority');
+const filterDateFrom   = $('filter-date-from');
+const filterDateTo     = $('filter-date-to');
+const filterDurMin     = $('filter-duration-min');
+const btnClearFilters  = $('btn-clear-filters');
 const stationQuickChips = $('station-quick-chips');
 const recordsCountMeta = $('records-count-meta');
 const opsMode = $('ops-mode');
@@ -104,7 +108,45 @@ let recordsFilter = {
   result: '',
   keyword: '',
   anomalyFirst: false,
+  dateFrom: '',
+  dateTo: '',
+  durationMin: 0,
 };
+let recordsSort = { col: 'datetime', dir: 'desc' };
+
+// ── Record helpers ────────────────────────────────────────────────────────────
+function _parseDurationSec(dur) {
+  if (!dur) return 0;
+  const s = String(dur).trim().replace(/s$/i, '');
+  const parts = s.split(':');
+  if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + (parseFloat(parts[2]) || 0);
+  if (parts.length === 2) return parseFloat(parts[0]) * 60 + (parseFloat(parts[1]) || 0);
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function _hi(rawText, keyword) {
+  const safe = esc(rawText);
+  if (!keyword) return safe;
+  try {
+    const kw = esc(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return safe.replace(new RegExp(kw, 'gi'), m => `<mark>${m}</mark>`);
+  } catch (_) {
+    return safe;
+  }
+}
+
+function _sortValue(rec, col) {
+  switch (col) {
+    case 'station':  return String(rec.station_id || '').toLowerCase();
+    case 'datetime': return rec.datetime || '';
+    case 'mac1':     return (rec.mac1 || '').toLowerCase();
+    case 'mac2':     return (rec.mac2 || '').toLowerCase();
+    case 'result':   return rec.result || '';
+    case 'duration': return _parseDurationSec(rec.duration);
+    default:         return rec.datetime || '';
+  }
+}
 let _confirmResolve = null;
 
 let CAN_MODIFY = false;
@@ -454,6 +496,13 @@ function _passesFilter(rec) {
   const station = String(rec.station_id || '').trim();
   if (recordsFilter.station && station !== recordsFilter.station) return false;
   if (recordsFilter.result && String(rec.result || '') !== recordsFilter.result) return false;
+
+  const recDate = (rec.datetime || '').slice(0, 10);
+  if (recordsFilter.dateFrom && recDate < recordsFilter.dateFrom) return false;
+  if (recordsFilter.dateTo   && recDate > recordsFilter.dateTo)   return false;
+
+  if (recordsFilter.durationMin > 0 && _parseDurationSec(rec.duration) <= recordsFilter.durationMin) return false;
+
   if (recordsFilter.keyword) {
     const kw = recordsFilter.keyword.toLowerCase();
     const hay = [
@@ -470,12 +519,33 @@ function _passesFilter(rec) {
 }
 
 function _sortRecords(rows) {
-  if (!recordsFilter.anomalyFirst) return rows;
+  const { col, dir } = recordsSort;
+  const mult = dir === 'asc' ? 1 : -1;
+  const sorted = [...rows].sort((a, b) => {
+    const va = _sortValue(a, col);
+    const vb = _sortValue(b, col);
+    if (typeof va === 'number') return (va - vb) * mult;
+    if (va < vb) return -mult;
+    if (va > vb) return mult;
+    return 0;
+  });
+  if (!recordsFilter.anomalyFirst) return sorted;
   const rank = r => (r.result === 'STOP' ? 2 : r.result === 'FAIL' ? 1 : 0);
-  return rows
-    .map((r, i) => [rank(r), i, r])
-    .sort((a, b) => b[0] - a[0] || a[1] - b[1])
-    .map(e => e[2]);
+  return sorted.sort((a, b) => rank(b) - rank(a));
+}
+
+function _updateSortHeaders() {
+  document.querySelectorAll('.records-table thead th[data-sort]').forEach(th => {
+    const arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    if (th.dataset.sort === recordsSort.col) {
+      arrow.textContent = recordsSort.dir === 'asc' ? '▲' : '▼';
+      arrow.classList.add('active');
+    } else {
+      arrow.textContent = '↕';
+      arrow.classList.remove('active');
+    }
+  });
 }
 
 function renderRecordsFromCache() {
@@ -484,8 +554,13 @@ function renderRecordsFromCache() {
   filtered.slice(0, MAX_ROWS).forEach(rec => {
     recordsTbody.appendChild(buildRow(rec));
   });
+  _updateSortHeaders();
   if (recordsCountMeta) {
-    recordsCountMeta.textContent = `${Math.min(filtered.length, MAX_ROWS)} / ${filtered.length}`;
+    const shown = Math.min(filtered.length, MAX_ROWS);
+    const total = recordsCache.length;
+    recordsCountMeta.textContent = filtered.length === total
+      ? `${shown} / ${total}`
+      : `${shown} match / ${total} total`;
   }
 }
 
@@ -697,7 +772,7 @@ if (filterKeyword) {
   filterKeyword.addEventListener('input', () => {
     clearTimeout(_kwTimer);
     _kwTimer = setTimeout(() => {
-      recordsFilter.keyword = filterKeyword.value.trim().toLowerCase();
+      recordsFilter.keyword = filterKeyword.value.trim();
       renderRecordsFromCache();
     }, 150);
   });
@@ -710,6 +785,54 @@ if (filterAnomalyBtn) {
     renderRecordsFromCache();
   });
 }
+if (filterDateFrom) {
+  filterDateFrom.addEventListener('change', () => {
+    recordsFilter.dateFrom = filterDateFrom.value;
+    renderRecordsFromCache();
+  });
+}
+if (filterDateTo) {
+  filterDateTo.addEventListener('change', () => {
+    recordsFilter.dateTo = filterDateTo.value;
+    renderRecordsFromCache();
+  });
+}
+let _durTimer = null;
+if (filterDurMin) {
+  filterDurMin.addEventListener('input', () => {
+    clearTimeout(_durTimer);
+    _durTimer = setTimeout(() => {
+      const v = parseFloat(filterDurMin.value);
+      recordsFilter.durationMin = isNaN(v) || v <= 0 ? 0 : v;
+      renderRecordsFromCache();
+    }, 250);
+  });
+}
+if (btnClearFilters) {
+  btnClearFilters.addEventListener('click', () => {
+    recordsFilter.dateFrom    = '';
+    recordsFilter.dateTo      = '';
+    recordsFilter.durationMin = 0;
+    if (filterDateFrom) filterDateFrom.value = '';
+    if (filterDateTo)   filterDateTo.value   = '';
+    if (filterDurMin)   filterDurMin.value   = '';
+    renderRecordsFromCache();
+  });
+}
+
+// ── Column sort ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.records-table thead th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (recordsSort.col === col) {
+      recordsSort.dir = recordsSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      recordsSort.col = col;
+      recordsSort.dir = col === 'datetime' ? 'desc' : 'asc';
+    }
+    renderRecordsFromCache();
+  });
+});
 
 if (inputWo) {
   inputWo.addEventListener('change', () => {
@@ -893,8 +1016,8 @@ function renderDistribution(dist) {
 // ── Record row ────────────────────────────────────────────────────────────────
 const RESULT_ICON = { PASS: '✓', FAIL: '✗', STOP: '⊘' };
 
-// SAFETY INVARIANT: every rec.* field in the innerHTML template below MUST be
-// wrapped in esc(). Adding a new field without esc() is an XSS vulnerability.
+// SAFETY INVARIANT: raw fields go through esc() inside _hi(). Direct HTML is
+// only inserted for badge/icon constants and <mark> tags produced by _hi().
 function buildRow(rec) {
   const tr = document.createElement('tr');
   tr.className = 'record-row';
@@ -902,16 +1025,19 @@ function buildRow(rec) {
   if (rec.result === 'STOP') tr.classList.add('row-stop');
   const badgeClass = { PASS: 'badge-pass', FAIL: 'badge-fail', STOP: 'badge-stop' }[rec.result] || '';
   const icon = RESULT_ICON[rec.result] || '';
-  const stationStr = (rec.station_id && rec.station_id !== '') ? esc(rec.station_id) : '—';
+  const kw = recordsFilter.keyword;
+  const stationStr = (rec.station_id && rec.station_id !== '') ? _hi(rec.station_id, kw) : '—';
+  const dateStr = rec.datetime ? rec.datetime.slice(0, 10).replace(/-/g, '/') : '—';
   const timeStr = esc(rec.time || (rec.datetime || '').slice(11, 19));
   const failSummary = rec.failed_items && rec.failed_items.length > 0
-    ? rec.failed_items.map(i => `${esc(i.step_name)}: ${esc(i.measurement)} ${esc(i.value)}${esc(i.unit)}`).join(' | ')
+    ? rec.failed_items.map(i => `${_hi(i.step_name, kw)}: ${_hi(i.measurement, kw)} ${_hi(i.value, kw)}${esc(i.unit)}`).join(' | ')
     : '';
   tr.innerHTML = `
     <td>${stationStr}</td>
+    <td>${dateStr}</td>
     <td>${timeStr}</td>
-    <td>${esc(rec.mac1)}</td>
-    <td>${esc(rec.mac2)}</td>
+    <td>${_hi(rec.mac1, kw)}</td>
+    <td>${_hi(rec.mac2, kw)}</td>
     <td><span class="badge ${badgeClass}"><span class="result-icon">${icon}</span>${esc(rec.result)}</span></td>
     <td>${esc(rec.duration)}</td>
     <td class="fail-summary">${failSummary}</td>`;
@@ -927,27 +1053,44 @@ function buildRow(rec) {
   return tr;
 }
 
+function _updateCountMeta() {
+  if (!recordsCountMeta) return;
+  const matched = recordsCache.filter(_passesFilter).length;
+  const shown   = Math.min(matched, MAX_ROWS);
+  const total   = recordsCache.length;
+  recordsCountMeta.textContent = matched === total
+    ? `${shown} / ${total}`
+    : `${shown} match / ${total} total`;
+}
+
 function prependRecord(rec) {
   recordsCache.unshift(rec);
-  if (recordsCache.length > MAX_ROWS * 3) {
-    recordsCache = recordsCache.slice(0, MAX_ROWS * 3);
-  }
   _refreshStationFilterOptions();
 
-  const tr = buildRow(rec);
+  // Non-default sort: full re-render keeps order correct
+  if (recordsSort.col !== 'datetime' || recordsSort.dir !== 'desc') {
+    renderRecordsFromCache();
+    return;
+  }
+
+  _updateCountMeta();
   if (!_passesFilter(rec)) return;
+
+  const tr = buildRow(rec);
   const animMap = { PASS: 'new-pass', FAIL: 'new-fail', STOP: 'new-stop' };
   if (animMap[rec.result]) {
     tr.classList.add(animMap[rec.result]);
     tr.addEventListener('animationend', () => tr.classList.remove(animMap[rec.result]), { once: true });
   }
-  recordsTbody.prepend(tr);
+  if (!recordsFilter.anomalyFirst) {
+    recordsTbody.prepend(tr);
+  } else {
+    // Anomaly-first: re-render so STOP/FAIL stay on top
+    renderRecordsFromCache();
+    return;
+  }
   while (recordsTbody.rows.length > MAX_ROWS) {
     recordsTbody.deleteRow(recordsTbody.rows.length - 1);
-  }
-  if (recordsCountMeta) {
-    const filtered = recordsCache.filter(_passesFilter).length;
-    recordsCountMeta.textContent = `${Math.min(filtered, MAX_ROWS)} / ${filtered}`;
   }
 }
 
@@ -991,6 +1134,7 @@ function clearDashboard() {
   hourlyChart.innerHTML = '<div class="chart-empty">No data</div>';
   distChart.innerHTML = '<div class="dist-empty">No data</div>';
   if (recordsCountMeta) recordsCountMeta.textContent = '0 / 0';
+  _updateSortHeaders();
   _refreshPathHealth();
 }
 

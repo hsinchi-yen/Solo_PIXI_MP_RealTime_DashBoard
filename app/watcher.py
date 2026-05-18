@@ -149,6 +149,7 @@ async def _handle_new_file(
         "new_record",
         {
             "station_id":   record["station_id"],
+            "datetime":     record["datetime"],
             "mac1":         record["mac1"],
             "mac2":         record["mac2"],
             "result":       record["result"],

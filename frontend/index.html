@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PIXI Modules MP Monitoring DashBOARD</title>
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=17">
 </head>
 <body>
 
@@ -235,11 +235,22 @@
       <button id="filter-anomaly-priority" class="hf-btn filter-anomaly-btn" title="Toggle anomaly-first sorting">Anomaly Priority: OFF</button>
       <input id="filter-keyword" class="filter-input filter-keyword" type="text" placeholder="Search MAC / failure item" aria-label="Keyword filter">
     </div>
+    <div class="records-filters-row2">
+      <span class="filter-date-label">From</span>
+      <input type="date" id="filter-date-from" class="filter-date-input" title="Filter records from this date (inclusive)">
+      <span class="filter-date-label">To</span>
+      <input type="date" id="filter-date-to" class="filter-date-input" title="Filter records up to this date (inclusive)">
+      <span class="filter-date-label" style="margin-left:8px;">Dur &gt;</span>
+      <input type="number" id="filter-duration-min" class="filter-dur-input" placeholder="sec" min="0" step="1" title="Show only tests longer than N seconds">
+      <span class="filter-date-label">s</span>
+      <button id="btn-clear-filters" class="hf-btn filter-clear-btn" title="Clear date and duration filters">✕ Clear</button>
+    </div>
     <div id="station-quick-chips" class="station-quick-chips" aria-label="Quick station filters"></div>
     <div class="table-scroll">
       <table class="records-table">
         <colgroup>
           <col class="col-station">
+          <col class="col-date">
           <col class="col-time">
           <col class="col-mac1">
           <col class="col-mac2">
@@ -249,12 +260,13 @@
         </colgroup>
         <thead>
           <tr>
-            <th>Station</th>
+            <th data-sort="station">Station <span class="sort-arrow">↕</span></th>
+            <th data-sort="datetime">Date <span class="sort-arrow">↕</span></th>
             <th>Time</th>
-            <th>MAC1</th>
-            <th>MAC2</th>
-            <th>Result</th>
-            <th>Duration</th>
+            <th data-sort="mac1">MAC1 <span class="sort-arrow">↕</span></th>
+            <th data-sort="mac2">MAC2 <span class="sort-arrow">↕</span></th>
+            <th data-sort="result">Result <span class="sort-arrow">↕</span></th>
+            <th data-sort="duration">Duration <span class="sort-arrow">↕</span></th>
             <th>Failure Items</th>
           </tr>
         </thead>
@@ -295,6 +307,6 @@
   </div>
 </div>
 
-<script src="/static/dashboard.js?v=25"></script>
+<script src="/static/dashboard.js?v=26"></script>
 </body>
 </html>
