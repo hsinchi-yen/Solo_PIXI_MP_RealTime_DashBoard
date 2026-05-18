@@ -86,14 +86,18 @@ class DashboardState:
     def uph(self) -> int:
         if not self._uph_times:
             return 0
-        cutoff = datetime.now() - timedelta(hours=1)
+        # Use latest record timestamp as reference to avoid wall-clock / timezone mismatch
+        # (Docker UTC vs naive log timestamps in local time).
+        latest = max(self._uph_times)
+        cutoff = latest - timedelta(hours=1)
         return sum(1 for t in self._uph_times if t >= cutoff)
 
     @property
     def minute_pass_rate(self) -> float:
         if not self._minute_pass_times:
             return 0.0
-        cutoff = datetime.now() - timedelta(hours=1)
+        latest = max(self._minute_pass_times)
+        cutoff = latest - timedelta(hours=1)
         count = sum(1 for t in self._minute_pass_times if t >= cutoff)
         return round(count / 60, 2)
 
