@@ -31,7 +31,7 @@ def get_resource_path(*parts):
 APP_ICON_PATH = get_resource_path('build_assets', 'icons', 'solo_pixi_splitter.ico')
 TN_LOGO_PATH  = get_resource_path('tn_log.png')
 DEFAULT_POLL_INTERVAL = 60
-DEFAULT_RSYNC_PATH = 'root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/'
+DEFAULT_RSYNC_PATH = 'root@10.20.80.111:/run/media/nvme0n1p1/rawlogs/'
 STATION_IDS = ['10', '20', '30', '40']
 DEFAULT_SRCS = {
     '10': r'D:\IQxel\ATSuite_V7_0_1_IQmeasure_3.1.2.20170623_QCA9377_V1.0.0\Release_2_RF1B\log',
@@ -409,13 +409,6 @@ QPushButton#defaultBtn:hover   { background-color: #E0E0E0; border-color: #9E9E9
 QPushButton#defaultBtn:pressed { background-color: #D0D0D0; }
 QPushButton#defaultBtn:disabled { color: #AAAAAA; border-color: #DCDCDC; }
 
-/* ── Header date label ── */
-QLabel#headerDate {
-    color: #8A8A8A;
-    font-size: 10px;
-    font-family: "Consolas", monospace;
-    padding-right: 2px;
-}
 """
 
 # ─────────────────────────────────────────────────────────────
@@ -612,14 +605,6 @@ QPushButton#defaultBtn {
 QPushButton#defaultBtn:hover   { background-color: #383838; border-color: #666666; color: #E0E0E0; }
 QPushButton#defaultBtn:pressed { background-color: #1E1E1E; }
 QPushButton#defaultBtn:disabled { color: #484848; border-color: #333333; }
-
-/* ── Header date label ── */
-QLabel#headerDate {
-    color: #585858;
-    font-size: 10px;
-    font-family: "Consolas", monospace;
-    padding-right: 2px;
-}
 
 QLabel#miniStats { color: #6CCB5F; font-size: 11px; font-weight: 700; padding-left: 8px; }
 """
@@ -1085,11 +1070,12 @@ class SplitCopyThread(QThread):
             except Exception as e:
                 self.copy_fail.emit(f"Write {filename}: {e}")
 
-            # WO file — separate copy with work-order prefix, independent of normal file
+            # WO file — separate copy with work-order prefix, written flat into output_dir
+            # (output_dir is already named after the WOU, so no extra subdir needed)
             if self._wo:
                 wo_filename = build_wo_filename(parsed, self._wo)
                 if wo_filename:
-                    wo_dir = os.path.join(self.output_dir, self._wo)
+                    wo_dir = self.output_dir
                     try:
                         os.makedirs(wo_dir, exist_ok=True)
                         wo_path = os.path.join(wo_dir, wo_filename)
@@ -1356,7 +1342,7 @@ class RealtimeSplitterApp(QMainWindow):
     # ── UI construction ──────────────────────────────────────
 
     def _initUI(self):
-        self.setWindowTitle('Log Splitter — Live')
+        self.setWindowTitle(f"Log Splitter — Live        VER: {datetime.now().strftime('%Y%m%d')}")
         self.setMinimumSize(672, 400)
         self.setMaximumSize(1280, 960)
         self.resize(936, 720)
@@ -1453,18 +1439,11 @@ class RealtimeSplitterApp(QMainWindow):
         self._btn_theme.setToolTip("切換 深色 / 淺色 主題")
         self._btn_theme.clicked.connect(self._toggle_theme)
 
-        today_str = datetime.now().strftime('%Y%m%d')
-        self._lbl_header_date = QLabel(today_str)
-        self._lbl_header_date.setObjectName("headerDate")
-        self._lbl_header_date.setToolTip("Today's date")
-
         # Build Layout Sequence
         h.addWidget(self._dot)
         h.addWidget(self._dot_state)
         h.addSpacing(4)
         h.addWidget(title)
-        h.addSpacing(6)
-        h.addWidget(self._lbl_header_date)
         h.addWidget(self._station_id_lbl)
         h.addWidget(self._lbl_mini_stats)
         h.addStretch(1)
@@ -1635,7 +1614,7 @@ class RealtimeSplitterApp(QMainWindow):
         lay.addLayout(h2)
 
         # DST hint
-        hint = QLabel("💡 Default: root@192.168.100.1:/run/media/nvme0n1p1/rawlogs/")
+        hint = QLabel("💡 Default: root@10.20.80.111:/run/media/nvme0n1p1/rawlogs/")
         hint.setObjectName("dstHint")
         lay.addWidget(hint)
 
@@ -1871,16 +1850,18 @@ class RealtimeSplitterApp(QMainWindow):
     def _check_wou_on_startup(self):
         saved_wou = QSettings("SoloPIXI", "LogSplitter").value("wou", "")
         if saved_wou:
-            reply = QMessageBox.question(
-                self, "工單號碼確認",
-                f"上次使用的工單號碼：{saved_wou}\n\n"
-                "是否沿用此工單？\n（按「否」可輸入新工單號碼）",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
-            if reply == QMessageBox.No:
-                self._prompt_wou(allow_cancel=False, current="")
-            # Yes → keep saved_wou already loaded by _restore_all_settings
+            box = QMessageBox(self)
+            box.setWindowTitle("工單號碼確認")
+            box.setText(f"上次使用的工單號碼：{saved_wou}\n\n請選擇操作：")
+            btn_reuse = box.addButton("沿用此工單", QMessageBox.YesRole)
+            btn_new   = box.addButton("輸入新工單", QMessageBox.NoRole)
+            box.addButton("略過 / 不變更", QMessageBox.RejectRole)
+            box.setDefaultButton(btn_reuse)
+            box.exec_()
+            clicked = box.clickedButton()
+            if clicked is btn_new:
+                self._prompt_wou(allow_cancel=True, current="")
+            # btn_reuse or 略過 → keep saved_wou already loaded by _restore_all_settings
             return
         self._prompt_wou(allow_cancel=False)
 
@@ -1911,6 +1892,7 @@ class RealtimeSplitterApp(QMainWindow):
             self.src_inputs[sta_id].setText(DEFAULT_SRCS[sta_id])
             self.out_inputs[sta_id].setText(
                 os.path.join(OUT_BASE_ROOTS[sta_id], wou) if wou else "")
+        self.dir_dest_input.setText(DEFAULT_RSYNC_PATH)
 
     def _update_btn_new_wo_label(self):
         wou = self.wo_input.text().strip() if hasattr(self, 'wo_input') else ""
@@ -1918,7 +1900,11 @@ class RealtimeSplitterApp(QMainWindow):
             self.btn_new_wo.setText(f"新增工單 [{wou}]" if wou else "新增工單 [—]")
         if hasattr(self, '_station_id_lbl'):
             self._station_id_lbl.setText(f"WOU : {wou}" if wou else "")
-        title = f"Log Splitter — Live  |  WOU : {wou}" if wou else "Log Splitter — Live"
+        today = datetime.now().strftime('%Y%m%d')
+        if wou:
+            title = f"Log Splitter — Live  |  WOU : {wou}        VER: {today}"
+        else:
+            title = f"Log Splitter — Live        VER: {today}"
         self.setWindowTitle(title)
 
     # ── Settings persistence ──────────────────────────────────
